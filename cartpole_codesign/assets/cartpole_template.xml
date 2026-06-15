@@ -1,0 +1,23 @@
+<mujoco model="cartpole_codesign">
+  <option timestep="0.01" gravity="0 0 -9.81"/>
+
+  <worldbody>
+    <!-- Cart -->
+    <body name="cart" pos="0 0 0.05">
+      <joint name="slider" type="slide" axis="1 0 0" range="-2.4 2.4"/>
+      <geom type="box" size="0.15 0.08 0.05" mass="{cart_mass}"/>
+
+      <!-- Pole -->
+      <body name="pole" pos="0 0 0.05">
+        <joint name="hinge" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 {pole_length}"
+              size="0.02" mass="{pole_mass}"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <!--motor name="slide" joint="slider" gear="1" ctrllimit="-10 10"-->
+    <motor name="slide" joint="slider" gear="1" ctrllimited="true" ctrlrange="-10 10"/>
+  </actuator>
+</mujoco>
