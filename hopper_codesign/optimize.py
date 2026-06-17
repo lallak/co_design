@@ -15,8 +15,8 @@ def run_codesign(output_path: str = "results/results_hopper/hopper_optimization_
     
     options = {
         'bounds': [lower_bounds, upper_bounds],
-        'maxiter': 2,
-        'popsize': 2,
+        'maxiter': 30,
+        'popsize': 12,
         'verbose': 1,
         'seed': 42,
     }
@@ -62,6 +62,8 @@ def run_codesign(output_path: str = "results/results_hopper/hopper_optimization_
     
     with open(output_path, 'w') as f:
         json.dump(history, f, indent=2)
+
+    print("Stop conditions:", es.stop()) #to understand why it doesnt go further than gen 0
     
     return theta_opt, history
 

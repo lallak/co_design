@@ -53,7 +53,14 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
     mj_data_init.qvel[:] = 0.0
 
     def run_single_episode(episode_seed_key):
+        perturb_key, _ = jax.random.split(episode_seed_key)
+        perturb = jax.random.uniform(perturb_key, shape=(), minval=-0.1, maxval=0.1)
+
+        # Upload unique CPU → GPU
         mjx_data = mjx.put_data(mj_model, mj_data_init)
+        new_qpos = mjx_data.qpos.at[1].add(perturb)
+        mjx_data = mjx_data.replace(qpos=new_qpos)
+
         initial_knots = jnp.zeros((NUM_KNOTS, mj_model.nu), dtype=jnp.float32)
         ctrl_state = controller.init_params(initial_knots=initial_knots, seed=0)
 

@@ -11,7 +11,7 @@ if __name__ == "__main__":
     parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test', 'sensitivity'],
                         help="Mode to run")
     parser.add_argument('--theta', nargs=3, type=float,
-                        default=[0.35, 0.4, 2.0],
+                        default=[0.35, 0.4, 2.86],
                         help="Design parameters [thigh_length, leg_length, rho]")
     args = parser.parse_args()
 
