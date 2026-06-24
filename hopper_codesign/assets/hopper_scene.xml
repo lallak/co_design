@@ -1,6 +1,6 @@
 <mujoco model="hopper_scene">
   <!-- Scene that includes the hopper model along with lighting and ground details. -->
-  <include file="/home/c838047190/co_design/hopper_codesign/assets/hopper.xml"/>
+  <include file="hopper_codesign/assets/hopper.xml"/>
 
   <statistic center="0.0 0.0 1.0" extent="3.0"/>
 

@@ -9,6 +9,7 @@ import mujoco
 from matplotlib import pyplot as plt
 from mujoco import mjx
 from hydrax.algs import MPPI
+from hydrax.algs import PredictiveSampling
 
 from hopper_codesign.tasks.hopper_task import HopperLocomotionTask
 from hopper_codesign.assets.model_builder import build_hopper_model
@@ -30,11 +31,19 @@ def _build_controller(theta_tuple):
     mj_model = build_hopper_model(theta_full)
     mjx_model = mjx.put_model(mj_model)
     task = HopperLocomotionTask(mj_model)
-    controller = MPPI(
+    """controller = MPPI(
         task,
         num_samples=NUM_SAMPLES,
         noise_level=NOISE_LEVEL,
         temperature=TEMPERATURE,
+        plan_horizon=PLAN_HORIZON,
+        num_knots=NUM_KNOTS,
+    )"""
+
+    controller = PredictiveSampling(
+        task,
+        num_samples=NUM_SAMPLES,
+        noise_level=NOISE_LEVEL,
         plan_horizon=PLAN_HORIZON,
         num_knots=NUM_KNOTS,
     )
