@@ -9,7 +9,7 @@ import mujoco
 from matplotlib import pyplot as plt
 from mujoco import mjx
 from hydrax.algs import MPPI
-from hydrax.algs import PredictiveSampling
+from hydrax.algs import DIAL
 
 from hopper_codesign.tasks.hopper_task import HopperLocomotionTask
 from hopper_codesign.assets.model_builder import build_hopper_model
@@ -39,13 +39,13 @@ def _build_controller(theta_tuple):
         plan_horizon=PLAN_HORIZON,
         num_knots=NUM_KNOTS,
     )"""
-
-    controller = PredictiveSampling(
+    controller = DIAL(
         task,
         num_samples=NUM_SAMPLES,
         noise_level=NOISE_LEVEL,
         plan_horizon=PLAN_HORIZON,
         num_knots=NUM_KNOTS,
+        num_elites=NUM_SAMPLES // 10,  # typically 10% of samples
     )
     jit_optimize = jax.jit(controller.optimize)
     jit_get_action = jax.jit(controller.get_action)
