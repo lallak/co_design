@@ -39,13 +39,13 @@ def _build_controller(theta_tuple):
         plan_horizon=PLAN_HORIZON,
         num_knots=NUM_KNOTS,
     )"""
+
     controller = DIAL(
         task,
         num_samples=NUM_SAMPLES,
         noise_level=NOISE_LEVEL,
         plan_horizon=PLAN_HORIZON,
         num_knots=NUM_KNOTS,
-        num_elites=NUM_SAMPLES // 10,  # typically 10% of samples
     )
     jit_optimize = jax.jit(controller.optimize)
     jit_get_action = jax.jit(controller.get_action)
