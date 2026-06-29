@@ -22,6 +22,9 @@ NOISE_LEVEL = 0.3
 TEMPERATURE = 0.5
 EPISODE_STEPS = 300
 NUM_EPISODES = 2
+BETA_OPT_ITER = 1.0
+BETA_HORIZON = 1.0
+TEMPERATURE = 0.001
 
 
 @lru_cache(maxsize=256)
@@ -44,6 +47,9 @@ def _build_controller(theta_tuple):
         task,
         num_samples=NUM_SAMPLES,
         noise_level=NOISE_LEVEL,
+        beta_opt_iter=BETA_OPT_ITER,
+        beta_horizon=BETA_HORIZON,
+        temperature=TEMPERATURE,
         plan_horizon=PLAN_HORIZON,
         num_knots=NUM_KNOTS,
     )
