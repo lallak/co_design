@@ -3,6 +3,8 @@ import cma #bc impossible to backpropagate through MPPI (obj function=black box,
 import json
 from cartpole_codesign.evaluator import evaluate_design
 
+MODEL_NAME = "cartpole"
+CONTROLLER_NAME = "MPPI"
 
 def run_codesign(output_path: str = "results_cartpole/optimization_log.json"):
     """
@@ -40,6 +42,13 @@ def run_codesign(output_path: str = "results_cartpole/optimization_log.json"):
     }
 
     generation = 0
+    max_gen = options["maxiter"]
+
+    print("\n==============================")
+    print(f"MODEL: {MODEL_NAME}")
+    print(f"CONTROLLER: {CONTROLLER_NAME}")
+    print(f"MAX GENERATIONS: {max_gen}")
+    print("==============================\n")
 
     # --- Optimization loop ---
     while not es.stop():

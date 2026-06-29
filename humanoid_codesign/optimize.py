@@ -3,6 +3,8 @@ import cma
 import json
 from humanoid_codesign.evaluator import evaluate_design
 
+MODEL_NAME = "biped_humanoid"
+CONTROLLER_NAME = "DIAL-MPC"
 
 def run_codesign(output_path: str = "results/results_humanoid/humanoid_optimization_log.json"):
     """Run CMA-ES optimization for humanoid design."""
@@ -32,6 +34,13 @@ def run_codesign(output_path: str = "results/results_humanoid/humanoid_optimizat
     }
 
     generation = 0
+    max_gen = options["maxiter"]
+
+    print("\n==============================")
+    print(f"MODEL: {MODEL_NAME}")
+    print(f"CONTROLLER: {CONTROLLER_NAME}")
+    print(f"MAX GENERATIONS: {max_gen}")
+    print("==============================\n")
 
     while not es.stop():
         candidates = es.ask()

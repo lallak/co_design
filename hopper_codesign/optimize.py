@@ -3,6 +3,8 @@ import cma
 import json
 from hopper_codesign.evaluator import evaluate_design
 
+MODEL_NAME = "hopper"
+CONTROLLER_NAME = "DIAL-MPC"
 
 def run_codesign(output_path: str = "results/results_hopper/hopper_optimization_log.json"):
     """Run CMA-ES optimization for hopper design."""
@@ -32,7 +34,14 @@ def run_codesign(output_path: str = "results/results_hopper/hopper_optimization_
     }
     
     generation = 0
-    
+    max_gen = options["maxiter"]
+
+    print("\n==============================")
+    print(f"MODEL: {MODEL_NAME}")
+    print(f"CONTROLLER: {CONTROLLER_NAME}")
+    print(f"MAX GENERATIONS: {max_gen}")
+    print("==============================\n")
+
     while not es.stop():
         candidates = es.ask()
         print(f"\n=== Generation {generation} ===")
