@@ -53,7 +53,7 @@
             <joint axis="0 0 1" name="leg_left_hip_pitch_joint" type="hinge" range="-1.8980455615438334 0.9817477042468103"/>
             <inertial pos="0.0030405 0.120388 0.0210924" mass="0.947974" fullinertia="0.00286449 0.00102465 0.00259958 0.00012235 -2.15676e-05 0.000265775"/>
             <!-- Part leg_left_hip_pitch_parts -->
-            <geom class="collision" pos="0.00597627 0.039 0.0295" quat="0.5 0.5 0.5 -0.5" type="cylinder" size="0.05 0.065"/>
+            <geom class="collision" pos="0.00597627 0.039 0.0295" quat="0.5 0.5 0.5 -0.5" type="capsule" size="0.05 0.065"/>
             <geom type="mesh" class="visual" pos="0.0030405 0.120388 0.0210924" quat="0.707107 0.707107 -3.77476e-15 1.5388e-15" mesh="leg_left_hip_pitch_visual" material="leg_left_hip_pitch_visual_material"/>
             <!-- Link leg_left_knee_pitch -->
             <body name="leg_left_knee_pitch" pos="4.02456e-16 0.15 -0.018" quat="9.83274e-15 4.47488e-16 2.22045e-16 -1">
@@ -61,7 +61,7 @@
               <joint axis="0 0 1" name="leg_left_knee_pitch_joint" type="hinge" range="-2.7711166694643907e-13 2.443460952791784"/>
               <inertial pos="-4.14041e-05 -0.112249 0.0257397" mass="0.653864" fullinertia="0.00230126 0.000559753 0.00203727 -4.24923e-07 1.36589e-06 3.7889e-05"/>
               <!-- Part leg_left_knee_pitch_parts -->
-              <geom class="collision" pos="-5.42149e-15 -0.115 0.022" quat="0.5 -0.5 0.5 0.5" type="cylinder" size="0.04 0.075"/>
+              <geom class="collision" pos="-5.42149e-15 -0.115 0.022" quat="0.5 -0.5 0.5 0.5" type="capsule" size="0.04 0.075"/>
               <geom type="mesh" class="visual" pos="-4.14041e-05 -0.112249 0.0257397" quat="5.61286e-15 1.04083e-14 0.707107 0.707107" mesh="leg_left_knee_pitch_visual" material="leg_left_knee_pitch_visual_material"/>
               <!-- Link leg_left_ankle_pitch -->
               <body name="leg_left_ankle_pitch" pos="-2.44943e-15 -0.16 -0.003" quat="7.23276e-14 3.08655e-16 4.44089e-16 -1">
@@ -104,7 +104,7 @@
             <joint axis="0 0 1" name="leg_right_hip_pitch_joint" type="hinge" range="-1.8980455615438334 0.9817477042468103"/>
             <inertial pos="0.00319928 0.120388 -0.0210924" mass="0.947974" fullinertia="0.00286448 0.00102371 0.00259864 0.000117078 2.6845e-05 -0.000265774"/>
             <!-- Part leg_right_hip_pitch_parts -->
-            <geom class="collision" pos="0.00597627 0.039 -0.0295" quat="0.5 0.5 0.5 -0.5" type="cylinder" size="0.05 0.065"/>
+            <geom class="collision" pos="0.00597627 0.039 -0.0295" quat="0.5 0.5 0.5 -0.5" type="capsule" size="0.05 0.065"/>
             <geom type="mesh" class="visual" pos="0.00319928 0.120388 -0.0210924" quat="0.707107 0.707107 -3.33067e-15 1.54477e-15" mesh="leg_right_hip_pitch_visual" material="leg_right_hip_pitch_visual_material"/>
             <!-- Link leg_right_knee_pitch -->
             <body name="leg_right_knee_pitch" pos="0 0.15 0.018" quat="1 0 -6.93889e-17 2.04003e-16">
@@ -112,7 +112,7 @@
               <joint axis="0 0 1" name="leg_right_knee_pitch_joint" type="hinge" range="-1.0835776720341528e-13 2.443460952791953"/>
               <inertial pos="-5.09429e-05 0.112249 -0.0257397" mass="0.653864" fullinertia="0.00230126 0.000559752 0.00203727 1.34936e-06 -1.17826e-06 3.7889e-05"/>
               <!-- Part leg_right_knee_pitch_parts -->
-              <geom class="collision" pos="1.15514e-14 0.115 -0.022" quat="0.5 0.5 0.5 -0.5" type="cylinder" size="0.04 0.075"/>
+              <geom class="collision" pos="1.15514e-14 0.115 -0.022" quat="0.5 0.5 0.5 -0.5" type="capsule" size="0.04 0.075"/>
               <geom type="mesh" class="visual" pos="-5.09429e-05 0.112249 -0.0257397" quat="0.707107 0.707107 -3.33067e-15 1.47391e-15" mesh="leg_right_knee_pitch_visual" material="leg_right_knee_pitch_visual_material"/>
               <!-- Link leg_right_ankle_pitch -->
               <body name="leg_right_ankle_pitch" pos="1.42421e-15 0.16 0.003" quat="1 5.55112e-17 -1.66533e-16 -4.25433e-14">

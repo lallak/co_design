@@ -5,10 +5,11 @@
       <sourceFolder url="file://$MODULE_DIR$/.venv/bin/lib/python3.12/site-packages" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/.venv/lib/python3.12/site-packages" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/hydrax" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/.venv/bin/bin/lib/python3.12/site-packages" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/hydrax/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="WSL (Ubuntu-24.04): (/home/c838047190/co_design/.venv/bin/python)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="WSL (Ubuntu-24.04): (/home/c838047190/co_design/.venv/bin/bin/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

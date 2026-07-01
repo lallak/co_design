@@ -11,7 +11,7 @@ from humanoid_codesign.tasks.humanoid_task import HumanoidLocomotionTask
 from humanoid_codesign.assets.model_builder import build_humanoid_model, get_rest_height
 
 # Hyperparameters
-PLAN_HORIZON  = 0.5
+PLAN_HORIZON  = 1.0
 NUM_KNOTS     = 4
 NUM_SAMPLES   = 1024
 NOISE_LEVEL   = 0.3

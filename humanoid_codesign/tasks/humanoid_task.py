@@ -11,9 +11,9 @@ class HumanoidLocomotionTask(Task):
             self,
             mj_model: mujoco.MjModel,
             rest_height: float = 0.85,
-            forward_reward_weight: float = 1.0,
+            forward_reward_weight: float = 0.5,
             ctrl_cost_weight: float = 1e-3,
-            healthy_reward: float = 1.0,
+            healthy_reward: float = 2.0,
             healthy_z_min: float = 0.65,
     ):
         super().__init__(mj_model)
@@ -47,11 +47,11 @@ class HumanoidLocomotionTask(Task):
         ctrl_cost      = self.ctrl_cost_weight * jnp.sum(jnp.square(u))
 
         is_healthy    = self._is_healthy(x)
-        healthy_bonus = jnp.where(is_healthy, self.healthy_reward, -5.0)
+        healthy_bonus = jnp.where(is_healthy, self.healthy_reward, -20.0) #HIGH FALL PENALTY
 
-        height_reward = -2.0 * (height - self.rest_height) ** 2
-        pitch_reward  = -2.0 * pitch ** 2
-        roll_reward   = -3.0 * roll  ** 2  # weighted higher: lateral falls are unrecoverable without arms
+        height_reward = -5.0 * jnp.minimum(height - self.rest_height,0.0) ** 2
+        pitch_reward  = -4.0 * pitch ** 2
+        roll_reward   = -6.0 * roll  ** 2  # weighted higher: lateral falls are unrecoverable without arms
 
         reward = healthy_bonus + forward_reward + height_reward + pitch_reward + roll_reward - ctrl_cost
         return -reward

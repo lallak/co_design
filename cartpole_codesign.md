@@ -1,4 +1,4 @@
-# Co-Design of CartPole via Sampling-Based MPC
+  # Co-Design of CartPole via Sampling-Based MPC
 
 ## Overview
 
