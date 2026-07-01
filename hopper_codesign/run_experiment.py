@@ -8,7 +8,7 @@ from hopper_codesign.evaluator import debug_controller
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hopper Co-Design Experiment")
-    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test', 'sensitivity'],
+    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test', 'sensitivity','debug'],
                         help="Mode to run")
     parser.add_argument('--theta', nargs=3, type=float,
                         default=[0.35, 0.4, 2.86],
