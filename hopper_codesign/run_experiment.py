@@ -4,7 +4,7 @@ import numpy as np
 from hopper_codesign.optimize import run_codesign
 from hopper_codesign.visualize_hopper import plot_convergence, render_best_design
 from hopper_codesign.evaluator import evaluate_design, sensitivity_analysis
-
+from hopper_codesign.evaluator import debug_controller
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hopper Co-Design Experiment")
@@ -46,4 +46,9 @@ if __name__ == "__main__":
         for name, val in sorted(results.items(), key=lambda x: -x[1]):
             bar = '█' * int(val * 20)
             print(f"  {name:>15}: {val:.3f}  {bar}")
+
+    elif args.mode == 'debug':
+        theta = np.array(args.theta)
+        print(f"Debugging controller for θ={np.round(theta, 3)}")
+        debug_controller(theta)
 
