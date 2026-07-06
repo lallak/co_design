@@ -17,8 +17,8 @@ def run_codesign(output_path: str = "results/results_hopper/hopper_optimization_
     
     options = {
         'bounds': [lower_bounds, upper_bounds],
-        'maxiter': 30,
-        'popsize': 12,
+        'maxiter': 50,
+        'popsize': 15,
         'verbose': 1,
         'seed': 42,
     }
