@@ -51,7 +51,7 @@ def plot_convergence(history_path: str = "results/results_hopper/hopper_optimiza
     param_names = [
         'Thigh Length (m)',
         'Leg Length (m)',
-        'Density rho (kg/m)',
+        'Density rho',
     ]
     colors = ['r', 'g', 'b']
     plot_positions = [(0, 1), (1, 0), (1, 1)]

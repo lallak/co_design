@@ -3,7 +3,7 @@
   <component name="Black">
     <option name="sdkName" value="WSL (Ubuntu-24.04): (/home/c838047190/.virtualenvs/co_design/bin/python)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="WSL (Ubuntu-24.04): (/home/c838047190/co_design/.venv/bin/bin/bin/python)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10.12 WSL (Ubuntu-22.04): (/home/lalla/co_design/.venv/bin/bin/python)" project-jdk-type="Python SDK" />
   <component name="PyPackaging">
     <option name="earlyReleasesAsUpgrades" value="true" />
   </component>

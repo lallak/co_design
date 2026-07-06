@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from functools import lru_cache
@@ -188,6 +189,66 @@ def sensitivity_analysis(nominal_theta: np.ndarray, n_eval: int = 5, delta: floa
     return sensitivities
 
 
+RHO_FIXED = 2.1,  # converged value
+
+def generate_heatmap_2d(
+    thigh_length_range = [0.15, 0.35],  # tight around converged ~0.28
+    leg_length_range = [0.30, 0.70],  # full range since it didn't converge
+    resolution=5,
+    output_path="results/results_hopper/heatmap_2d.png",
+):
+    thigh_lengths = np.linspace(thigh_length_range[0], thigh_length_range[1], resolution)
+    leg_lengths   = np.linspace(leg_length_range[0],   leg_length_range[1],   resolution)
+    heatmap       = np.zeros((len(leg_lengths), len(thigh_lengths)))
+
+    print(f"Generating {resolution}x{resolution} heatmap (rho={RHO_FIXED} kg/m fixed)...")
+
+    for i, leg_length in enumerate(leg_lengths):
+        for j, thigh_length in enumerate(thigh_lengths):
+            theta  = np.array([thigh_length, leg_length, RHO_FIXED])
+            reward = evaluate_design(theta, seed=i * resolution + j)
+            heatmap[i, j] = reward
+            print(f"  [{i+1}/{len(leg_lengths)}, {j+1}/{len(thigh_lengths)}] "
+                  f"thigh={thigh_length:.2f}, leg={leg_length:.2f} → reward={reward:.3f}")
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    im = ax.imshow(heatmap, origin="lower",
+                   extent=[thigh_lengths.min(), thigh_lengths.max(),
+                           leg_lengths.min(),   leg_lengths.max()],
+                   aspect="auto", cmap="RdYlGn", interpolation="nearest")
+    ax.set_xlabel("Thigh Length (m)", fontsize=12)
+    ax.set_ylabel("Leg Length (m)",   fontsize=12)
+    ax.set_title(f"Hopper Design Landscape\n(rho={RHO_FIXED} kg/m fixed)", fontsize=14)
+    plt.colorbar(im, ax=ax, label="Reward")
+
+    best_idx          = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+    best_thigh_length = thigh_lengths[best_idx[1]]
+    best_leg_length   = leg_lengths[best_idx[0]]
+    best_reward       = heatmap[best_idx]
+    ax.plot(best_thigh_length, best_leg_length, "r*", markersize=25,
+            label=f"Best: {best_reward:.3f}", markeredgecolor="black", markeredgewidth=1.5)
+    ax.legend(fontsize=11, loc="upper left")
+
+    contours = ax.contour(thigh_lengths, leg_lengths, heatmap,
+                          levels=5, colors="black", alpha=0.3, linewidths=0.5)
+    ax.clabel(contours, inline=True, fontsize=8)
+
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    print(f"\nHeatmap saved to {output_path}")
+    print(f"\n=== Heatmap Summary ===")
+    print(f"  thigh_length = {best_thigh_length:.4f} m")
+    print(f"  leg_length   = {best_leg_length:.4f} m")
+    print(f"  rho          = {RHO_FIXED:.4f} kg/m (fixed)")
+    print(f"  Best reward  = {best_reward:.4f}")
+
+    np.savez(output_path.replace(".png", "_data.npz"),
+             thigh_lengths=thigh_lengths, leg_lengths=leg_lengths,
+             heatmap=heatmap, rho_fixed=RHO_FIXED)
+    return heatmap, thigh_lengths, leg_lengths
+
+
 if __name__ == "__main__":
-    theta = np.array([0.35, 0.4, 2.0])
+    theta = np.array([0.258,0.635,1.932])
     debug_controller(theta)

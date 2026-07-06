@@ -13,7 +13,7 @@ from cartpole_codesign.evaluator import evaluate_design, generate_heatmap_2d
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CartPole Co-Design Experiment")
-    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test'],
+    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test','heatmap'],
                         help="Mode to run")
     parser.add_argument('--theta', nargs=2, type=float,
                         default=[0.8, 1.0],
@@ -36,4 +36,6 @@ if __name__ == "__main__":
         # Quick sanity check: evaluate the default design
         theta = np.array(args.theta)
         reward = evaluate_design(theta, seed=0)
-        generate_heatmap_2d(resolution=args.resolution)
+
+    elif args.mode == 'heatmap':
+        generate_heatmap_2d()

@@ -218,8 +218,8 @@ class CartpoleSwingupTask(Task):
     The pole starts hanging down. The goal is to swing it up
     and balance it at the inverted position.
     """
-    
-    def __init__(self, mj_model: mujoco.MjModel, 
+
+    def __init__(self, mj_model: mujoco.MjModel,
                  plan_horizon: float = 1.0,
                  num_knots: int = 10,
                  dt: float = 0.01):
@@ -231,8 +231,8 @@ class CartpoleSwingupTask(Task):
             dt:            Simulation timestep (should match XML)
         """
         super().__init__(mj_model, plan_horizon=plan_horizon,
-                        num_knots=num_knots, dt=dt)
-    
+                         num_knots=num_knots, dt=dt)
+
     def running_cost(self, x: mjx.Data, u: jax.Array) -> float:
         """
         Cost at each timestep. Lower is better.
@@ -245,24 +245,24 @@ class CartpoleSwingupTask(Task):
         """
         cart_pos = x.qpos[0]
         pole_angle = x.qpos[1]
-        
+
         # (1 - cos) is 0 when upright (angle=π), 2 when hanging (angle=0)
         # We use pole_angle directly — check your model's angle convention
         upright_cost = 1.0 - jnp.cos(pole_angle)
-        
+
         # Keep cart near center
         cart_cost = 0.1 * jnp.square(cart_pos)
-        
+
         # Penalize large control inputs
         control_cost = 0.01 * jnp.sum(jnp.square(u))
-        
+
         return upright_cost + cart_cost + control_cost
-    
+
     def terminal_cost(self, x: mjx.Data) -> float:
         """Cost at the final state (end of planning horizon)."""
         cart_pos = x.qpos[0]
         pole_angle = x.qpos[1]
-        
+
         return (1.0 - jnp.cos(pole_angle)) + 0.1 * jnp.square(cart_pos)
 ```
 
@@ -287,15 +287,14 @@ from hydrax.algs import MPPI
 from cartpole_codesign.tasks.cartpole_task import CartpoleSwingupTask
 from cartpole_codesign.assets.model_builder import build_cartpole_model
 
-
 # Hyperparameters (fixed across all designs)
-PLAN_HORIZON = 1.0      # seconds
-NUM_KNOTS    = 10       # spline control points
-DT           = 0.01     # simulation timestep
-NUM_SAMPLES  = 256      # MPPI trajectory samples per step
-NOISE_LEVEL  = 0.5      # MPPI exploration noise
-EPISODE_STEPS = 400     # steps per episode (~4 seconds)
-NUM_EPISODES  = 3       # episodes per design evaluation
+PLAN_HORIZON = 1.0  # seconds
+NUM_KNOTS = 10  # spline control points
+DT = 0.01  # simulation timestep
+NUM_SAMPLES = 256  # MPPI trajectory samples per step
+NOISE_LEVEL = 0.5  # MPPI exploration noise
+EPISODE_STEPS = 400  # steps per episode (~4 seconds)
+NUM_EPISODES = 3  # episodes per design evaluation
 
 
 def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
@@ -312,58 +311,58 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
     """
     # --- Build model and task ---
     mj_model = build_cartpole_model(theta)
-    task = CartpoleSwingupTask(mj_model, 
+    task = CartpoleSwingupTask(mj_model,
                                plan_horizon=PLAN_HORIZON,
-                               num_knots=NUM_KNOTS, 
+                               num_knots=NUM_KNOTS,
                                dt=DT)
-    
+
     # --- Initialize MPPI controller ---
-    controller = MPPI(task, 
+    controller = MPPI(task,
                       num_samples=NUM_SAMPLES,
                       noise_level=NOISE_LEVEL)
-    
+
     # --- JIT-compile the MPC update step (do this once per design) ---
     jit_update = jax.jit(controller.update)
     jit_get_action = jax.jit(controller.get_action)
-    
+
     # --- Run episodes ---
     rng = jax.random.PRNGKey(seed)
     total_reward = 0.0
-    
+
     for episode in range(NUM_EPISODES):
         # Reset to initial state: pole hanging down, small random perturbation
         mj_data = mujoco.MjData(mj_model)
         mj_data.qpos[1] = np.pi + np.random.uniform(-0.1, 0.1)  # pole down
         mj_data.qvel[:] = 0.0
-        
+
         # Convert to MJX data for JAX operations
         mjx_data = mjx.put_data(mj_model, mj_data)
-        
+
         # Initialize controller state
         rng, subkey = jax.random.split(rng)
         ctrl_state = controller.init(subkey)
-        
+
         episode_reward = 0.0
-        
+
         for step in range(EPISODE_STEPS):
             # MPC update: sample trajectories and compute optimal action
             rng, subkey = jax.random.split(rng)
             ctrl_state = jit_update(ctrl_state, mjx_data, subkey)
-            
+
             # Get the first action from the optimal plan
             action = jit_get_action(ctrl_state)
-            
+
             # Apply action and step simulation
             mj_data.ctrl[:] = np.array(action)
             mujoco.mj_step(mj_model, mj_data)
             mjx_data = mjx.put_data(mj_model, mj_data)
-            
+
             # Accumulate reward (negative cost)
             cost = task.running_cost(mjx_data, action)
             episode_reward -= float(cost)
-        
+
         total_reward += episode_reward
-    
+
     return total_reward / NUM_EPISODES
 ```
 
@@ -492,28 +491,28 @@ from cartpole_codesign.assets.model_builder import build_cartpole_model
 
 def plot_convergence(history_path: str = "results_cartpole/optimization_log.json"):
     """Plot best fitness and design parameters over generations."""
-    
+
     with open(history_path, 'r') as f:
         history = json.load(f)
-    
-    generations  = history['generations']
+
+    generations = history['generations']
     best_fitness = history['best_fitness']
-    best_thetas  = np.array(history['best_theta'])
-    
+    best_thetas = np.array(history['best_theta'])
+
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     fig.suptitle("CartPole Co-Design: CMA-ES Convergence", fontsize=14)
-    
+
     # Fitness over generations
     axes[0, 0].plot(generations, best_fitness, 'b-o', linewidth=2)
     axes[0, 0].set_xlabel("Generation")
     axes[0, 0].set_ylabel("Best Reward")
     axes[0, 0].set_title("Best Design Performance per Generation")
     axes[0, 0].grid(True)
-    
+
     # Design parameter evolution
     param_names = ['Pole Length (m)', 'Pole Mass (kg)', 'Cart Mass (kg)']
     colors = ['r', 'g', 'b']
-    
+
     for i, (name, color) in enumerate(zip(param_names, colors)):
         ax = axes[(i + 1) // 2, (i + 1) % 2]
         ax.plot(generations, best_thetas[:, i], f'{color}-o', linewidth=2)
@@ -521,7 +520,7 @@ def plot_convergence(history_path: str = "results_cartpole/optimization_log.json
         ax.set_ylabel(name)
         ax.set_title(f"Optimal {name} over Generations")
         ax.grid(True)
-    
+
     plt.tight_layout()
     plt.savefig("results_cartpole/convergence_30_12_slowmode.png", dpi=150)
     plt.show()
@@ -537,11 +536,11 @@ def render_best_design(theta: np.ndarray):
     """
     print(f"Rendering design: pole_length={theta[0]:.3f}, "
           f"pole_mass={theta[1]:.3f}, cart_mass={theta[2]:.3f}")
-    
+
     mj_model = build_cartpole_model(theta)
     task = CartpoleSwingupTask(mj_model, plan_horizon=1.0, num_knots=10, dt=0.01)
     controller = MPPI(task, num_samples=512, noise_level=0.5)
-    
+
     # run_interactive opens a MuJoCo viewer window
     run_interactive(task, controller)
 ```

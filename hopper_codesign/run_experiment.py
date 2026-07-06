@@ -3,15 +3,14 @@ import argparse
 import numpy as np
 from hopper_codesign.optimize import run_codesign
 from hopper_codesign.visualize_hopper import plot_convergence, render_best_design
-from hopper_codesign.evaluator import evaluate_design, sensitivity_analysis
-from hopper_codesign.evaluator import debug_controller
+from hopper_codesign.evaluator import evaluate_design, sensitivity_analysis, generate_heatmap_2d
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hopper Co-Design Experiment")
-    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test', 'sensitivity','debug'],
+    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test', 'sensitivity','heatmap'],
                         help="Mode to run")
     parser.add_argument('--theta', nargs=3, type=float,
-                        default=[0.35, 0.4, 2.86],
+                        default=[0.258,0.635,1.932],
                         help="Design parameters [thigh_length, leg_length, rho]")
     args = parser.parse_args()
 
@@ -47,8 +46,6 @@ if __name__ == "__main__":
             bar = '█' * int(val * 20)
             print(f"  {name:>15}: {val:.3f}  {bar}")
 
-    elif args.mode == 'debug':
-        theta = np.array(args.theta)
-        print(f"Debugging controller for θ={np.round(theta, 3)}")
-        debug_controller(theta)
+    elif args.mode == 'heatmap':
+        generate_heatmap_2d()
 
