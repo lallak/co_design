@@ -189,7 +189,7 @@ def sensitivity_analysis(nominal_theta: np.ndarray, n_eval: int = 5, delta: floa
     return sensitivities
 
 
-RHO_FIXED = 2.1,  # converged value
+RHO_FIXED = 2.1  # converged value
 
 def generate_heatmap_2d(
     thigh_length_range = [0.15, 0.35],  # tight around converged ~0.28
