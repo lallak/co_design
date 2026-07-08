@@ -9,7 +9,6 @@ SCENE_PATH = os.path.join(os.path.dirname(__file__), "bhl_biped_scene.xml")
 HIP_HEIGHT  = 0.542631 #adapt to rory's robot
 FOOT_LENGTH = 0.22
 
-
 def build_humanoid_model(theta: np.ndarray) -> mujoco.MjModel:
     """
     Args:
@@ -53,7 +52,6 @@ def build_humanoid_model(theta: np.ndarray) -> mujoco.MjModel:
 
     return mujoco.MjModel.from_xml_string(xml)
 
-
 def get_rest_height(theta: np.ndarray) -> float:
     thigh_length, shank_length, _ = theta
-    return thigh_length + shank_length - 1.02
+    return thigh_length + shank_length - 0.79

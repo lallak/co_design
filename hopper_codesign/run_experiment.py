@@ -4,10 +4,11 @@ import numpy as np
 from hopper_codesign.optimize import run_codesign
 from hopper_codesign.visualize_hopper import plot_convergence, render_best_design
 from hopper_codesign.evaluator import evaluate_design, sensitivity_analysis, generate_heatmap_2d
+from humanoid_codesign.evaluator import debug_controller
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hopper Co-Design Experiment")
-    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test', 'sensitivity','heatmap'],
+    parser.add_argument('mode', choices=['optimize', 'visualize', 'render', 'test', 'sensitivity','heatmap','debug'],
                         help="Mode to run")
     parser.add_argument('--theta', nargs=3, type=float,
                         default=[0.258,0.635,1.932],
@@ -48,4 +49,8 @@ if __name__ == "__main__":
 
     elif args.mode == 'heatmap':
         generate_heatmap_2d()
+
+    elif args.mode == 'debug':
+        theta = np.array(args.theta)
+        debug_controller(theta)
 

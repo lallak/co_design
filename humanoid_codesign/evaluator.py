@@ -58,6 +58,15 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
     mj_data_init.qpos[3] = 1.0                      # quaternion w, upright
     mj_data_init.qvel[:] = 0.0
 
+    # Slight crouched standing posture
+    mj_data_init.qpos[9] = -0.20  # Left hip pitch
+    mj_data_init.qpos[10] = 0.40  # Left knee
+    mj_data_init.qpos[11] = -0.20  # Left ankle pitch
+
+    mj_data_init.qpos[15] = -0.20  # Right hip pitch
+    mj_data_init.qpos[16] = 0.40  # Right knee
+    mj_data_init.qpos[17] = -0.20  # Right ankle pitch
+
     def run_single_episode(episode_seed_key):
         perturb_key, _ = jax.random.split(episode_seed_key)
         perturb = jax.random.uniform(perturb_key, shape=(), minval=-0.02, maxval=0.02)
@@ -92,11 +101,19 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
 def debug_controller(theta: np.ndarray):
     theta_key = tuple(np.round(theta, 4))
     mj_model, mjx_model, task, controller, jit_optimize, jit_get_action = _build_controller(theta_key)
-
     mj_data = mujoco.MjData(mj_model)
     mj_data.qpos[2] = get_rest_height(theta)
     mj_data.qpos[3] = 1.0
     mj_data.qvel[:] = 0.0
+
+    # Slight crouched standing posture
+    mj_data.qpos[9] = -0.20  # Left hip pitch
+    mj_data.qpos[10] = 0.40  # Left knee
+    mj_data.qpos[11] = -0.20  # Left ankle pitch
+
+    mj_data.qpos[15] = -0.20  # Right hip pitch
+    mj_data.qpos[16] = 0.40  # Right knee
+    mj_data.qpos[17] = -0.20  # Right ankle pitch
 
     mjx_data      = mjx.put_data(mj_model, mj_data)
     initial_knots = jnp.zeros((NUM_KNOTS, mj_model.nu), dtype=jnp.float32)
