@@ -16,16 +16,22 @@ from hopper_codesign.tasks.hopper_task import HopperLocomotionTask
 from hopper_codesign.assets.model_builder import build_hopper_model
 
 # Hyperparameters
-PLAN_HORIZON = 0.5
-NUM_KNOTS = 4
-NUM_SAMPLES = 1024
-NOISE_LEVEL = 0.3
-TEMPERATURE = 0.5
-EPISODE_STEPS = 300
-NUM_EPISODES = 2
-BETA_OPT_ITER = 1.0
-BETA_HORIZON = 1.0
+PLAN_HORIZON = 0.5 #duration that MPC plans into the future
+NUM_KNOTS = 10 #number of control points used to represent control trajectory
+# More knots allow more complex motions but increase the optimization dimension.
+NUM_SAMPLES = 1024 #number of trajectories sampled at each MPC update
+NOISE_LEVEL = 0.3 #std deviation of gaussian noise added to sampled trajectories
+# Larger values encourage exploration, smaller values focus on refinement.
+TEMPERATURE = 0.5 #controls how much best trajectories influence final control (in weighted average calculation)
+# Lower values make the optimizer greedier; higher values average over more samples.
+EPISODE_STEPS = 300 # Number of simulation steps in one evaluation episode.
+NUM_EPISODES = 2 # Number of episodes used to evaluate each design.
+BETA_OPT_ITER = 1.0 # DIAL parameter controlling interpolation between exploration and exploitation
+#the higher the quicker the controller focuses on promising regions
+BETA_HORIZON = 1.0 # DIAL parameter controlling how exploration changes along the planning horizon.
+#Earlier controls are more refined than late controls
 
+'Basically exploration when the kernel (noise) is high and exploitation when focusing on the promising trajectories with a low kernel.'
 
 @lru_cache(maxsize=256)
 def _build_controller(theta_tuple):
@@ -194,7 +200,7 @@ RHO_FIXED = 2.1  # converged value
 def generate_heatmap_2d(
     thigh_length_range = [0.15, 0.35],  # tight around converged ~0.28
     leg_length_range = [0.30, 0.70],  # full range since it didn't converge
-    resolution=20,
+    resolution=15,
     output_path="results/results_hopper/heatmap_2d.png",
 ):
     thigh_lengths = np.linspace(thigh_length_range[0], thigh_length_range[1], resolution)
