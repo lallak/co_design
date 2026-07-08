@@ -77,25 +77,34 @@ class HumanoidLocomotionTask(Task):
         pitch = jnp.arcsin(2.0 * (qw * qy - qz * qx))
         roll  = jnp.arctan2(2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx**2 + qy**2))
 
+        #reward following speed
         forward_reward = self.forward_reward_weight * x.qvel[0]
         #forward_reward = -(x.qvel[0] - self.target_speed) ** 2
+
+        #penalize large actuator torques, more efficient motion
         ctrl_cost      = self.ctrl_cost_weight * jnp.sum(jnp.square(u))
 
+        #staying upright
         is_healthy    = self._is_healthy(x)
         #healthy_reward = jnp.where(is_healthy, self.healthy_reward, -20.0) #HIGH FALL PENALTY
         healthy_reward = jnp.where(is_healthy, 1.0, -5.0)
 
+        #remain near standing height
         height_reward = -5.0 * jnp.minimum(height - self.rest_height,0.0) ** 2
+        #penalize leaning forward or backward
         pitch_reward  = -4.0 * pitch ** 2
+        #penalize leaning on sides
         roll_reward   = -6.0 * roll  ** 2  # weighted higher: lateral falls are unrecoverable without arms
 
-        posture_cost = (
+
+        '''posture_cost = (
                 self.posture_cost_weight
                 * jnp.sum(
             (x.qpos[7:] - self.qstand) ** 2
         )
-        )
-        vertical_velocity_cost = 0.5 * x.qvel[2] ** 2
+        )'''
+
+        #vertical_velocity_cost = 0.5 * x.qvel[2] ** 2
 
         left_pos = x.xpos[self.left_foot_body]
         right_pos = x.xpos[self.right_foot_body]
@@ -108,7 +117,7 @@ class HumanoidLocomotionTask(Task):
         lateral_cost = 2.0 * x.qvel[1] ** 2
         yaw_rate_cost = 0.5 * x.qvel[5] ** 2
 
-        reward = healthy_reward + forward_reward + height_reward + pitch_reward + roll_reward + foot_diff_reward + foot_forward_reward - ctrl_cost - posture_cost - vertical_velocity_cost - lateral_cost - yaw_rate_cost
+        reward = healthy_reward + forward_reward + height_reward + pitch_reward + roll_reward + foot_diff_reward + foot_forward_reward - ctrl_cost - vertical_velocity_cost - lateral_cost - yaw_rate_cost
 
         return -reward
 
