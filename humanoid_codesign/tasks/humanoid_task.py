@@ -62,14 +62,14 @@ class HumanoidLocomotionTask(Task):
         qw, qx, qy, qz = x.qpos[3], x.qpos[4], x.qpos[5], x.qpos[6]
 
         # Pitch: forward/backward tilt
-        pitch = jnp.arcsin(2.0 * (qw * qy - qz * qx))
+        '''pitch = jnp.arcsin(2.0 * (qw * qy - qz * qx))
         # Roll: lateral tilt — critical for a biped with no upper body to balance
         roll  = jnp.arctan2(2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx**2 + qy**2))
-
+'''
         height_ok = height >= self.healthy_z_min
-        pitch_ok  = jnp.abs(pitch) <= 0.4  # ~23 deg
-        roll_ok   = jnp.abs(roll)  <= 0.3  # ~17 deg, tighter: no arms to recover
-        return height_ok & pitch_ok & roll_ok
+        '''pitch_ok  = jnp.abs(pitch) <= 0.4  # ~23 deg
+        roll_ok   = jnp.abs(roll)  <= 0.3  # ~17 deg, tighter: no arms to recover'''
+        return height_ok
 
     def running_cost(self, x: mjx.Data, u: jax.Array) -> float:
         height = x.qpos[2]
@@ -87,15 +87,18 @@ class HumanoidLocomotionTask(Task):
         #staying upright
         is_healthy    = self._is_healthy(x)
         #healthy_reward = jnp.where(is_healthy, self.healthy_reward, -20.0) #HIGH FALL PENALTY
-        healthy_reward = jnp.where(is_healthy, 1.0, -5.0)
+        healthy_reward = jnp.where(is_healthy, 1.0, -1.0)
 
         #remain near standing height
         height_reward = -5.0 * jnp.minimum(height - self.rest_height,0.0) ** 2
         #penalize leaning forward or backward
-        pitch_reward  = -4.0 * pitch ** 2
+        pitch_reward  = -1.0 * pitch ** 2
         #penalize leaning on sides
-        roll_reward   = -6.0 * roll  ** 2  # weighted higher: lateral falls are unrecoverable without arms
+        roll_reward   = -2.0 * roll  ** 2  # weighted higher: lateral falls are unrecoverable without arms
 
+        # Encourage a slight forward lean (~0.15 rad ≈ 9°)
+        desired_pitch = 0.15
+        torso_forward_reward = 0.5 * jnp.exp(-20.0 * (pitch - desired_pitch) ** 2)
 
         '''posture_cost = (
                 self.posture_cost_weight
@@ -117,11 +120,12 @@ class HumanoidLocomotionTask(Task):
         lateral_cost = 2.0 * x.qvel[1] ** 2
         yaw_rate_cost = 0.5 * x.qvel[5] ** 2
 
-        reward = healthy_reward + forward_reward + height_reward + pitch_reward + roll_reward + foot_diff_reward + foot_forward_reward - ctrl_cost - vertical_velocity_cost - lateral_cost - yaw_rate_cost
+
+        reward = healthy_reward + forward_reward + height_reward + foot_diff_reward + foot_forward_reward + pitch_reward + roll_reward + torso_forward_reward - ctrl_cost - lateral_cost - yaw_rate_cost
 
         return -reward
 
     def terminal_cost(self, x: mjx.Data) -> float:
         is_healthy    = self._is_healthy(x)
-        healthy_reward = jnp.where(is_healthy, self.healthy_reward, -20.0) #HIGH FALL PENALTY
+        healthy_reward = jnp.where(is_healthy, self.healthy_reward, -2.0)
         return -healthy_reward
