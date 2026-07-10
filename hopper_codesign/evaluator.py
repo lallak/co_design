@@ -200,7 +200,7 @@ RHO_FIXED = 2.1  # converged value
 def generate_heatmap_2d(
     thigh_length_range = [0.15, 0.35],  # tight around converged ~0.28
     leg_length_range = [0.30, 0.70],  # full range since it didn't converge
-    resolution=15,
+    resolution=20,
     output_path="results/results_hopper/heatmap_2d_hopper_20x20_DIAL_10knots.png",
 ):
     thigh_lengths = np.linspace(thigh_length_range[0], thigh_length_range[1], resolution)
