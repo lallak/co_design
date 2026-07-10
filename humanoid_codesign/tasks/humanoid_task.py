@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import mujoco
+from jax import Array
 from mujoco import mjx
 from hydrax.task_base import Task
 
@@ -17,6 +18,9 @@ class HumanoidLocomotionTask(Task):
             ctrl_cost_weight: float = 1e-3,
             healthy_reward: float = 0.5,
             healthy_z_min: float = 0.65,
+            step_height_min: float = 0.03,
+            step_height_max: float = 0.15,
+            foot_contact_height: float = 0.04,
     ):
         super().__init__(mj_model)
         self.rest_height           = rest_height
@@ -26,6 +30,9 @@ class HumanoidLocomotionTask(Task):
         self.posture_cost_weight = posture_cost_weight
         self.healthy_reward        = healthy_reward
         self.healthy_z_min         = healthy_z_min
+        self.step_height_min = step_height_min
+        self.step_height_max = step_height_max
+        self.foot_contact_height = foot_contact_height
 
         self.left_foot_body = mujoco.mj_name2id(
             mj_model,
@@ -71,59 +78,230 @@ class HumanoidLocomotionTask(Task):
         roll_ok   = jnp.abs(roll)  <= 0.3  # ~17 deg, tighter: no arms to recover'''
         return height_ok
 
-    def running_cost(self, x: mjx.Data, u: jax.Array) -> float:
-        height = x.qpos[2]
-        qw, qx, qy, qz = x.qpos[3], x.qpos[4], x.qpos[5], x.qpos[6]
-        pitch = jnp.arcsin(2.0 * (qw * qy - qz * qx))
-        roll  = jnp.arctan2(2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx**2 + qy**2))
+    def foot_step_reward(self, x: mjx.Data) -> jax.Array:
+        """
+        Approximation of Berkeley's feet_air_time reward.
 
-        #reward following speed
-        forward_reward = self.forward_reward_weight * x.qvel[0]
-        #forward_reward = -(x.qvel[0] - self.target_speed) ** 2
-
-        #penalize large actuator torques, more efficient motion
-        ctrl_cost      = self.ctrl_cost_weight * jnp.sum(jnp.square(u))
-
-        #staying upright
-        is_healthy    = self._is_healthy(x)
-        #healthy_reward = jnp.where(is_healthy, self.healthy_reward, -20.0) #HIGH FALL PENALTY
-        healthy_reward = jnp.where(is_healthy, 1.0, -1.0)
-
-        #remain near standing height
-        height_reward = -5.0 * jnp.minimum(height - self.rest_height,0.0) ** 2
-        #penalize leaning forward or backward
-        pitch_reward  = -1.0 * pitch ** 2
-        #penalize leaning on sides
-        roll_reward   = -2.0 * roll  ** 2  # weighted higher: lateral falls are unrecoverable without arms
-
-        # Encourage a slight forward lean (~0.15 rad ≈ 9°)
-        desired_pitch = 0.15
-        torso_forward_reward = 0.5 * jnp.exp(-20.0 * (pitch - desired_pitch) ** 2)
-
-        '''posture_cost = (
-                self.posture_cost_weight
-                * jnp.sum(
-            (x.qpos[7:] - self.qstand) ** 2
-        )
-        )'''
-
-        #vertical_velocity_cost = 0.5 * x.qvel[2] ** 2
+        Reward when one foot is higher than the other,
+        encouraging alternating steps.
+        """
 
         left_pos = x.xpos[self.left_foot_body]
         right_pos = x.xpos[self.right_foot_body]
 
-        #reward only when one foot higher than the other and in front
-        foot_diff_reward = jnp.abs(left_pos[2] - right_pos[2])
-        foot_forward_reward = jnp.abs(left_pos[0] - right_pos[0])
+        air_height = jnp.abs(left_pos[2] - right_pos[2])
 
-        #keep the robot going straight
+        threshold_min = 0.03
+        threshold_max = 0.15
+
+        reward = air_height - threshold_min
+        reward = jnp.clip(reward, 0.0, threshold_max - threshold_min)
+
+        # no reward if robot is almost standing still
+        reward *= (x.qvel[0] > 0.05)
+
+        return reward
+
+    def foot_step_reward_biped(self, x: mjx.Data) -> jax.Array:
+        """
+        Approximation of feet_air_time_positive_biped.
+
+        Reward moderate alternating steps.
+        """
+
+        left_pos = x.xpos[self.left_foot_body]
+        right_pos = x.xpos[self.right_foot_body]
+
+        air_height = jnp.abs(left_pos[2] - right_pos[2])
+
+        threshold_min = 0.03
+        threshold_max = 0.15
+
+        reward = jnp.minimum(air_height, threshold_max)
+
+        reward *= reward > threshold_min
+
+        reward *= (x.qvel[0] > 0.05)
+
+        return reward
+
+    def feet_slide_cost(self, x: mjx.Data) -> jax.Array:
+        """
+        Approximation of Berkeley feet_slide.
+
+        Penalize horizontal foot motion when feet are
+        close to the ground.
+        """
+
+        left_pos = x.xpos[self.left_foot_body]
+        right_pos = x.xpos[self.right_foot_body]
+
+        left_vel = x.cvel[self.left_foot_body][3:]
+        right_vel = x.cvel[self.right_foot_body][3:]
+
+        contact_height = 0.04
+
+        left_contact = left_pos[2] < contact_height
+        right_contact = right_pos[2] < contact_height
+
+        left_slide = (
+            jnp.linalg.norm(left_vel[:2]) *
+            left_contact.astype(jnp.float32)
+        )
+
+        right_slide = (
+            jnp.linalg.norm(right_vel[:2]) *
+            right_contact.astype(jnp.float32)
+        )
+
+        return left_slide + right_slide
+
+    def running_cost(self, x: mjx.Data, u: jax.Array) -> float:
+
+        # -------------------------------------------------
+        # Robot state
+        # -------------------------------------------------
+        height = x.qpos[2]
+
+        qw, qx, qy, qz = (
+            x.qpos[3],
+            x.qpos[4],
+            x.qpos[5],
+            x.qpos[6],
+        )
+
+        pitch = jnp.arcsin(2.0 * (qw * qy - qz * qx))
+        roll = jnp.arctan2(
+            2.0 * (qw * qx + qy * qz),
+            1.0 - 2.0 * (qx**2 + qy**2),
+        )
+
+        # -------------------------------------------------
+        # Velocity tracking (instead of rewarding speed)
+        # -------------------------------------------------
+        forward_reward = jnp.exp(
+            -((x.qvel[0] - self.target_speed) ** 2) / 0.25
+        )
+
+        # -------------------------------------------------
+        # Healthy reward
+        # -------------------------------------------------
+        healthy_reward = jnp.where(
+            self._is_healthy(x),
+            self.healthy_reward,
+            -2.0,
+        )
+
+        # -------------------------------------------------
+        # Height / posture
+        # -------------------------------------------------
+        height_reward = -5.0 * jnp.maximum(
+            self.rest_height - height,
+            0.0,
+        ) ** 2
+
+        pitch_reward = -1.0 * pitch**2
+        roll_reward = -2.0 * roll**2
+
+        desired_pitch = 0.15
+        torso_forward_reward = (
+            0.5 * jnp.exp(-20.0 * (pitch - desired_pitch) ** 2)
+        )
+
+        # -------------------------------------------------
+        # Feet (Berkeley-inspired)
+        # -------------------------------------------------
+        step_reward = self.foot_step_reward_biped(x)
+
+        slide_cost = self.feet_slide_cost(x)
+
+        # -------------------------------------------------
+        # Control effort
+        # -------------------------------------------------
+        ctrl_cost = (
+            self.ctrl_cost_weight
+            * jnp.sum(jnp.square(u))
+        )
+
+        # -------------------------------------------------
+        # Walk straight
+        # -------------------------------------------------
         lateral_cost = 2.0 * x.qvel[1] ** 2
-        yaw_rate_cost = 0.5 * x.qvel[5] ** 2
+        yaw_cost = 0.5 * x.qvel[5] ** 2
 
+        # -------------------------------------------------
+        # Total reward
+        # -------------------------------------------------
+        reward = (
+            healthy_reward
+            + forward_reward
+            + height_reward
+            + pitch_reward
+            + roll_reward
+            + torso_forward_reward
+            + step_reward
+            - slide_cost
+            - ctrl_cost
+            - lateral_cost
+            - yaw_cost
+        )
 
-        reward = healthy_reward + forward_reward + height_reward + foot_diff_reward + foot_forward_reward + pitch_reward + roll_reward + torso_forward_reward - ctrl_cost - lateral_cost - yaw_rate_cost
-
+        # DIAL minimizes cost
         return -reward
+
+    """def running_cost(self, x: mjx.Data, u: jax.Array) -> float:
+            height = x.qpos[2]
+            qw, qx, qy, qz = x.qpos[3], x.qpos[4], x.qpos[5], x.qpos[6]
+            pitch = jnp.arcsin(2.0 * (qw * qy - qz * qx))
+            roll  = jnp.arctan2(2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx**2 + qy**2))
+    
+            #reward following speed
+            forward_reward = self.forward_reward_weight * x.qvel[0]
+            #forward_reward = -(x.qvel[0] - self.target_speed) ** 2
+    
+            #penalize large actuator torques, more efficient motion
+            ctrl_cost      = self.ctrl_cost_weight * jnp.sum(jnp.square(u))
+    
+            #staying upright
+            is_healthy    = self._is_healthy(x)
+            #healthy_reward = jnp.where(is_healthy, self.healthy_reward, -20.0) #HIGH FALL PENALTY
+            healthy_reward = jnp.where(is_healthy, 1.0, -1.0)
+    
+            #remain near standing height
+            height_reward = -5.0 * jnp.minimum(height - self.rest_height,0.0) ** 2
+            #penalize leaning forward or backward
+            pitch_reward  = -1.0 * pitch ** 2
+            #penalize leaning on sides
+            roll_reward   = -2.0 * roll  ** 2  # weighted higher: lateral falls are unrecoverable without arms
+    
+            # Encourage a slight forward lean (~0.15 rad ≈ 9°)
+            desired_pitch = 0.15
+            torso_forward_reward = 0.5 * jnp.exp(-20.0 * (pitch - desired_pitch) ** 2)
+    
+            '''posture_cost = (
+                    self.posture_cost_weight
+                    * jnp.sum(
+                (x.qpos[7:] - self.qstand) ** 2
+            )
+            )'''
+    
+            #vertical_velocity_cost = 0.5 * x.qvel[2] ** 2
+    
+            left_pos = x.xpos[self.left_foot_body]
+            right_pos = x.xpos[self.right_foot_body]
+    
+            #reward only when one foot higher than the other and in front
+            foot_diff_reward = jnp.abs(left_pos[2] - right_pos[2])
+            foot_forward_reward = jnp.abs(left_pos[0] - right_pos[0])
+    
+            #keep the robot going straight
+            lateral_cost = 2.0 * x.qvel[1] ** 2
+            yaw_rate_cost = 0.5 * x.qvel[5] ** 2
+    
+    
+            reward = healthy_reward + forward_reward + height_reward + foot_diff_reward + foot_forward_reward + pitch_reward + roll_reward + torso_forward_reward - ctrl_cost - lateral_cost - yaw_rate_cost
+    
+            return -reward"""
 
     def terminal_cost(self, x: mjx.Data) -> float:
         is_healthy    = self._is_healthy(x)
