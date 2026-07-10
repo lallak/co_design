@@ -16,7 +16,7 @@ from hopper_codesign.tasks.hopper_task import HopperLocomotionTask
 from hopper_codesign.assets.model_builder import build_hopper_model
 
 # Hyperparameters
-PLAN_HORIZON = 0.5 #duration that MPC plans into the future
+PLAN_HORIZON = 0.8 #duration that MPC plans into the future
 NUM_KNOTS = 10 #number of control points used to represent control trajectory
 # More knots allow more complex motions but increase the optimization dimension.
 NUM_SAMPLES = 1024 #number of trajectories sampled at each MPC update
@@ -24,11 +24,11 @@ NOISE_LEVEL = 0.3 #std deviation of gaussian noise added to sampled trajectories
 # Larger values encourage exploration, smaller values focus on refinement.
 TEMPERATURE = 0.5 #controls how much best trajectories influence final control (in weighted average calculation)
 # Lower values make the optimizer greedier; higher values average over more samples.
-EPISODE_STEPS = 300 # Number of simulation steps in one evaluation episode.
-NUM_EPISODES = 2 # Number of episodes used to evaluate each design.
-BETA_OPT_ITER = 1.0 # DIAL parameter controlling interpolation between exploration and exploitation
+EPISODE_STEPS = 400 # Number of simulation steps in one evaluation episode.
+NUM_EPISODES = 6 # Number of episodes used to evaluate each design.
+BETA_OPT_ITER = 0.8 # DIAL parameter controlling interpolation between exploration and exploitation
 #the higher the quicker the controller focuses on promising regions
-BETA_HORIZON = 1.0 # DIAL parameter controlling how exploration changes along the planning horizon.
+BETA_HORIZON = 0.8 # DIAL parameter controlling how exploration changes along the planning horizon.
 #Earlier controls are more refined than late controls
 
 'Basically exploration when the kernel (noise) is high and exploitation when focusing on the promising trajectories with a low kernel.'
