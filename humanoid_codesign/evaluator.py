@@ -58,11 +58,14 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
     mj_data_init.qpos[3] = 1.0                      # quaternion w, upright
     mj_data_init.qvel[:] = 0.0
 
-    # Slight crouched standing posture
+    # Slight crouched standing posture with wider lateral stance.
+    stance_hip_roll = 0.14
+    mj_data_init.qpos[7] = stance_hip_roll     # Left hip roll
     mj_data_init.qpos[9] = -0.20  # Left hip pitch
     mj_data_init.qpos[10] = 0.40  # Left knee
     mj_data_init.qpos[11] = -0.20  # Left ankle pitch
 
+    mj_data_init.qpos[13] = -stance_hip_roll   # Right hip roll
     mj_data_init.qpos[15] = -0.20  # Right hip pitch
     mj_data_init.qpos[16] = 0.40  # Right knee
     mj_data_init.qpos[17] = -0.20  # Right ankle pitch
@@ -106,11 +109,14 @@ def debug_controller(theta: np.ndarray):
     mj_data.qpos[3] = 1.0
     mj_data.qvel[:] = 0.0
 
-    # Slight crouched standing posture
+    # Slight crouched standing posture with wider lateral stance.
+    stance_hip_roll = 0.14
+    mj_data.qpos[7] = stance_hip_roll     # Left hip roll
     mj_data.qpos[9] = -0.20  # Left hip pitch
     mj_data.qpos[10] = 0.40  # Left knee
     mj_data.qpos[11] = -0.20  # Left ankle pitch
 
+    mj_data.qpos[13] = -stance_hip_roll   # Right hip roll
     mj_data.qpos[15] = -0.20  # Right hip pitch
     mj_data.qpos[16] = 0.40  # Right knee
     mj_data.qpos[17] = -0.20  # Right ankle pitch
