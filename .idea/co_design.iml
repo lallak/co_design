@@ -9,7 +9,7 @@
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/hydrax/.venv" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.10.12 WSL (Ubuntu-22.04): (/home/lalla/co_design/.venv/bin/bin/python)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="WSL (Ubuntu-24.04): (/home/c838047190/co_design/.venv/bin/bin/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
