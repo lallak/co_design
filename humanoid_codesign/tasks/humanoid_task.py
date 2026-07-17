@@ -35,14 +35,12 @@ class HumanoidLocomotionTask(Task):
         pitch_balance = jnp.exp(-8.0 * pitch ** 2)
         roll_balance = jnp.exp(-12.0 * roll ** 2)
 
-        balance_reward = pitch_balance + roll_balance
-
         is_healthy = (height >= self.healthy_z_min) & (jnp.abs(pitch) <= 0.6) & (jnp.abs(roll) <= 0.4)
         healthy = jnp.where(is_healthy, 1.0, -6.5)
         height_penalty = -3.0 * jnp.maximum(self.rest_height - height, 0.0) ** 2
 
         # 2. GO FORWARD — linear reward on forward velocity
-        forward = 3.0 * jnp.maximum(x.qvel[0], 0.0)*pitch_balance
+        forward = 3.0 * jnp.maximum(x.qvel[0], 0.0)
 
         # 3. ALTERNATE FEET — reward one foot up while the other is down
         left_z  = x.xpos[self.left_foot_body][2]
@@ -53,13 +51,22 @@ class HumanoidLocomotionTask(Task):
         # reward swing foot being lifted, but only during single support
         single_support = left_contact * (1.0 - right_contact) + right_contact * (1.0 - left_contact)
         swing_height = left_contact * right_z + right_contact * left_z  # height of the NON-contact foot
-        alternation = single_support * jnp.clip(swing_height / 0.16, 0.0, 1.0)*pitch_balance*roll_balance
+        alternation = single_support * jnp.clip(swing_height / 0.16, 0.0, 1.0)
 
         # reward swing foot moving forward while in the air
         left_air = 1.0 - left_contact
         right_air = 1.0 - right_contact
         swing_forward = (left_air * jnp.maximum(x.cvel[self.left_foot_body][3], 0.0) +
                          right_air * jnp.maximum(x.cvel[self.right_foot_body][3], 0.0))
+
+        # Reward the swing foot being placed ahead of the stance foot
+        left_x = x.xpos[self.left_foot_body][0]
+        right_x = x.xpos[self.right_foot_body][0]
+
+        left_step = left_air * right_contact * jnp.maximum(left_x - right_x, 0.0)
+        right_step = right_air * left_contact * jnp.maximum(right_x - left_x, 0.0)
+
+        step_reward = left_step + right_step
 
         # Small penalties to keep things clean
         ctrl_cost    = 1e-3 * jnp.sum(jnp.square(u))
@@ -73,21 +80,23 @@ class HumanoidLocomotionTask(Task):
         # penalize feet landing too far to the side
         left_y_offset = (x.xpos[self.left_foot_body][1] - 0.08) ** 2  # 0.08 = nominal hip width
         right_y_offset = (x.xpos[self.right_foot_body][1] + 0.08) ** 2
-        foot_placement_cost = 3.0 * (left_y_offset + right_y_offset)
+        foot_placement_cost = 0.5 * (left_y_offset + right_y_offset)
 
         # penalize hip yaw — keeps legs pointing forward
         left_hip_yaw = x.qpos[8]  # leg_left_hip_yaw_joint
         right_hip_yaw = x.qpos[14]  # leg_right_hip_yaw_joint
-        hip_yaw_cost = 3.0 * (left_hip_yaw ** 2 + right_hip_yaw ** 2)
+        hip_yaw_cost = 0.5 * (left_hip_yaw ** 2 + right_hip_yaw ** 2)
 
         total = (healthy + height_penalty + forward
-                 #+ balance_reward
+                 #+ balance_reward #it wants to stay balanced too much and ends up squatting instead of moving
                  + 2.0 * alternation
-                 + 1.5 * swing_forward
-                 - ctrl_cost - lateral_cost
-                 - lateral_swing_cost
-                 - foot_placement_cost
-                 #- hip_yaw_cost
+                 + 1.0 * swing_forward
+                 + 3.0 * step_reward
+                 - ctrl_cost
+                 #- lateral_cost
+                 #- lateral_swing_cost
+                 #- foot_placement_cost
+                 - hip_yaw_cost
                  )
         return -total
 
