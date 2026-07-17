@@ -31,12 +31,18 @@ class HumanoidLocomotionTask(Task):
         qw, qx, qy, qz = x.qpos[3], x.qpos[4], x.qpos[5], x.qpos[6]
         pitch = jnp.arcsin(2.0 * (qw * qy - qz * qx))
         roll = jnp.arctan2(2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx ** 2 + qy ** 2))
+        # Encourage remaining upright continuously
+        pitch_balance = jnp.exp(-8.0 * pitch ** 2)
+        roll_balance = jnp.exp(-12.0 * roll ** 2)
+
+        balance_reward = pitch_balance + roll_balance
+
         is_healthy = (height >= self.healthy_z_min) & (jnp.abs(pitch) <= 0.6) & (jnp.abs(roll) <= 0.4)
-        healthy = jnp.where(is_healthy, 1.0, -10.0)
+        healthy = jnp.where(is_healthy, 1.0, -6.5)
         height_penalty = -3.0 * jnp.maximum(self.rest_height - height, 0.0) ** 2
 
         # 2. GO FORWARD — linear reward on forward velocity
-        forward = 2.0 * jnp.maximum(x.qvel[0], 0.0)
+        forward = 3.0 * jnp.maximum(x.qvel[0], 0.0)*pitch_balance
 
         # 3. ALTERNATE FEET — reward one foot up while the other is down
         left_z  = x.xpos[self.left_foot_body][2]
@@ -47,7 +53,7 @@ class HumanoidLocomotionTask(Task):
         # reward swing foot being lifted, but only during single support
         single_support = left_contact * (1.0 - right_contact) + right_contact * (1.0 - left_contact)
         swing_height = left_contact * right_z + right_contact * left_z  # height of the NON-contact foot
-        alternation = single_support * jnp.clip(swing_height / 0.1, 0.0, 1.0)
+        alternation = single_support * jnp.clip(swing_height / 0.16, 0.0, 1.0)*pitch_balance*roll_balance
 
         # reward swing foot moving forward while in the air
         left_air = 1.0 - left_contact
@@ -72,13 +78,17 @@ class HumanoidLocomotionTask(Task):
         # penalize hip yaw — keeps legs pointing forward
         left_hip_yaw = x.qpos[8]  # leg_left_hip_yaw_joint
         right_hip_yaw = x.qpos[14]  # leg_right_hip_yaw_joint
-        hip_yaw_cost = 5.0 * (left_hip_yaw ** 2 + right_hip_yaw ** 2)
+        hip_yaw_cost = 3.0 * (left_hip_yaw ** 2 + right_hip_yaw ** 2)
 
         total = (healthy + height_penalty + forward
-                 + 2.0 * alternation + 1.5 * swing_forward
+                 #+ balance_reward
+                 + 2.0 * alternation
+                 + 1.5 * swing_forward
                  - ctrl_cost - lateral_cost
-                 - lateral_swing_cost - foot_placement_cost
-                 - hip_yaw_cost)
+                 - lateral_swing_cost
+                 - foot_placement_cost
+                 #- hip_yaw_cost
+                 )
         return -total
 
     def terminal_cost(self, x: mjx.Data) -> float:
