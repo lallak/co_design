@@ -92,7 +92,6 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
         (final_data, _), costs = jax.lax.scan(
             step_fn, (mjx_data, ctrl_state), None, length=EPISODE_STEPS
         )
-
         return final_data.qpos[0] - jnp.sum(costs)
 
     rng          = jax.random.PRNGKey(seed)

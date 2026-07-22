@@ -80,7 +80,7 @@ def render_best_design(theta: np.ndarray):
     mj_data.qpos[3] = 1.0          # quaternion w, upright
     mj_data.qvel[:] = 0.0
     # Standing posture (slightly wider stance)
-    stance_hip_roll = 0.14
+    stance_hip_roll = 0.12
     mj_data.qpos[7] = stance_hip_roll  # L hip roll
     mj_data.qpos[9] = -0.20  # L hip pitch
     mj_data.qpos[10] = 0.40  # L knee

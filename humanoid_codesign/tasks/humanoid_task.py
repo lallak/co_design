@@ -8,6 +8,411 @@ from hydrax.task_base import Task
 class HumanoidLocomotionTask(Task):
 
     def __init__(
+        self,
+        mj_model: mujoco.MjModel,
+        rest_height: float = 0.85, #0.85
+        healthy_z_min: float = 0.65,
+
+        # -------- Commanded walking --------
+        target_vx: float = 1.0,
+        target_vy: float = 0.0,
+        target_yaw_rate: float = 0.0,
+
+        # -------- Reward weights --------
+        gait_weight: float = 5.0,
+        velocity_weight: float = 1.0,
+        angular_velocity_weight: float = 1.0,
+        upright_weight: float = 0.5,
+        yaw_weight: float = 0.1,
+        height_weight: float = 0.5,
+        energy_weight: float = 0.01,
+        air_time_weight: float = 0.0,
+
+        # -------- Gait parameters --------
+        gait: str = "walk",
+    ):
+        super().__init__(mj_model)
+
+        self.rest_height = rest_height
+        self.healthy_z_min = healthy_z_min
+
+        self.target_vx = target_vx
+        self.target_vy = target_vy
+        self.target_yaw_rate = target_yaw_rate
+
+        self.gait_weight = gait_weight
+        self.velocity_weight = velocity_weight
+        self.angular_velocity_weight = angular_velocity_weight
+        self.upright_weight = upright_weight
+        self.yaw_weight = yaw_weight
+        self.height_weight = height_weight
+        self.energy_weight = energy_weight
+        self.air_time_weight = air_time_weight
+
+        self.gait = gait
+
+        # -------------------------------------------------
+        # Feet
+        # -------------------------------------------------
+
+        self.left_foot_body = mujoco.mj_name2id(
+            mj_model,
+            mujoco.mjtObj.mjOBJ_BODY,
+            "leg_left_ankle_roll",
+        )
+
+        self.right_foot_body = mujoco.mj_name2id(
+            mj_model,
+            mujoco.mjtObj.mjOBJ_BODY,
+            "leg_right_ankle_roll",
+        )
+
+        self.feet = jnp.array(
+            [self.left_foot_body, self.right_foot_body],
+            dtype=jnp.int32,
+        )
+
+        # -------------------------------------------------
+        # Gait parameters copied from Unitree
+        # -------------------------------------------------
+
+        self.gait_phase = {
+            "stand": jnp.array([0.0, 0.0]),
+            "slow_walk": jnp.array([0.0, 0.5]),
+            "walk": jnp.array([0.0, 0.5]),
+            "jog": jnp.array([0.0, 0.5]),
+        }
+
+        # duty ratio, cadence, swing height
+
+        self.gait_params = {
+            "stand": jnp.array([1.0, 1.0, 0.0]),
+            "slow_walk": jnp.array([0.6, 0.8, 0.15]),
+            "walk": jnp.array([0.5, 1.0, 0.15]),
+            "jog": jnp.array([0.3, 2.0, 0.20]),
+        }
+
+        # -------------------------------------------------
+        # Standing pose
+        # -------------------------------------------------
+
+        self.qstand = jnp.array([
+            0.0,
+            0.0,
+            -0.08,
+            0.15,
+            - 0.08,
+            0.0,
+
+            0.0,
+            0.0,
+            -0.08,
+            0.15,
+            - 0.08,
+            0.0,
+        ])
+
+    def running_cost(self, x: mjx.Data, u: jax.Array) -> float:
+        # ==========================================================
+        # Desired commands
+        # ==========================================================
+
+        target_vx = 1.0  # desired forward speed
+        target_vy = 0.0
+        target_yaw_rate = 0.0
+
+        # ==========================================================
+        # Base state
+        # ==========================================================
+
+        height = x.qpos[2]
+
+        qw, qx, qy, qz = x.qpos[3:7]
+
+        pitch = jnp.arcsin(
+            2.0 * (qw * qy - qz * qx)
+        )
+
+        roll = jnp.arctan2(
+            2.0 * (qw * qx + qy * qz),
+            1.0 - 2.0 * (qx * qx + qy * qy),
+        )
+
+        yaw = jnp.arctan2(
+            2.0 * (qw * qz + qx * qy),
+            1.0 - 2.0 * (qy * qy + qz * qz),
+        )
+
+        # ==========================================================
+        # Velocity tracking : reach the target velocity
+        # ==========================================================
+
+        vx = x.qvel[0]
+        vy = x.qvel[1]
+        yaw_rate = x.qvel[5]
+
+        reward_vel = -(
+                (vx - target_vx) ** 2
+                + (vy - target_vy) ** 2
+        )
+
+        reward_yaw_rate = -(
+                                   yaw_rate - target_yaw_rate
+                           ) ** 2
+
+        # ==========================================================
+        # Angular velocity tracking :reduce body rotation to the min necessary
+        # ==========================================================
+
+        roll_rate = x.qvel[3]
+        pitch_rate = x.qvel[4]
+        yaw_rate = x.qvel[5]
+
+        reward_ang_vel = -(
+                roll_rate ** 2
+                + pitch_rate ** 2
+                + yaw_rate ** 2
+        )
+
+        # ==========================================================
+        # Upright reward :keep torso vertical
+        # ==========================================================
+
+        reward_upright = -(pitch ** 2 + roll ** 2)
+
+        # ==========================================================
+        # Yaw reward : keep the body oriented in the desired direction
+        # ==========================================================
+
+        reward_yaw = -(yaw ** 2)
+        # ==========================================================
+        # Heading reward
+        # Encourage facing the walking direction
+        # ==========================================================
+
+        forward_vec = jnp.array([
+            jnp.cos(yaw),
+            jnp.sin(yaw),
+        ])
+
+        desired_forward = jnp.array([1.0, 0.0])
+
+        reward_heading = jnp.dot(forward_vec, desired_forward)
+        # ==========================================================
+        # Height reward:keep torso at desired height
+        # ==========================================================
+
+        reward_height = -(
+                                 height - self.rest_height
+                         ) ** 2
+
+        # ==========================================================
+        # Standing posture reward
+        # Encourage the robot to return to a nominal standing pose
+        # ==========================================================
+
+        qpos_joints = x.qpos[7:19]
+
+        reward_posture = -jnp.sum((qpos_joints - self.qstand) ** 2)
+
+        # ==========================================================
+        # Contact reward :encourage walking rythm w/ feet alternation = gait timing reward
+        # ==========================================================
+
+        left_z = x.xpos[self.left_foot_body][2]
+        right_z = x.xpos[self.right_foot_body][2]
+
+        foot_contact_height = 0.04
+
+        left_contact = jnp.clip(
+            (foot_contact_height - left_z) / foot_contact_height,
+            0.0,
+            1.0,
+        )
+
+        right_contact = jnp.clip(
+            (foot_contact_height - right_z) / foot_contact_height,
+            0.0,
+            1.0,
+        )
+
+        # ==========================================================
+        # Foot positions and velocities
+        # ==========================================================
+
+        left_x = x.xpos[self.left_foot_body][0]
+        right_x = x.xpos[self.right_foot_body][0]
+
+        left_vx = x.cvel[self.left_foot_body][3]
+        right_vx = x.cvel[self.right_foot_body][3]
+
+        left_air = 1.0 - left_contact
+        right_air = 1.0 - right_contact
+
+        contact_reward = (
+                left_contact * (1.0 - right_contact)
+                + right_contact * (1.0 - left_contact)
+        )
+
+        # ==========================================================
+        # Swing-foot reward
+        # ==========================================================
+
+        single_support = contact_reward
+
+        swing_height = (
+                left_contact * right_z
+                + right_contact * left_z
+        )
+
+        reward_gait = (
+                single_support
+                * jnp.clip(swing_height / 0.15, 0.0, 1.0)
+        )
+
+        # ==========================================================
+        # Swing-foot forward reward
+        # ==========================================================
+
+        reward_swing_forward = (
+                left_air * jnp.maximum(left_vx, 0.0)
+                + right_air * jnp.maximum(right_vx, 0.0)
+        )
+
+        # ==========================================================
+        # Step placement reward
+        # ==========================================================
+
+        left_step = (
+                left_air
+                * right_contact
+                * jnp.maximum(left_x - right_x, 0.0)
+        )
+
+        right_step = (
+                right_air
+                * left_contact
+                * jnp.maximum(right_x - left_x, 0.0)
+        )
+
+        reward_step = left_step + right_step
+
+        # ==========================================================
+        # Energy
+        # ==========================================================
+
+        reward_energy = -jnp.sum(u ** 2)
+
+        # ==========================================================
+        # Healthy reward :penalize falling
+        # ==========================================================
+
+        healthy = (
+                (height > self.healthy_z_min)
+                & (jnp.abs(pitch) < 0.6)
+                & (jnp.abs(roll) < 0.5)
+        )
+
+        reward_alive = jnp.where(
+            healthy,
+            1.0,
+            -5.0,
+        )
+
+        # ==========================================================
+        # Final reward
+        # ==========================================================
+
+        reward = (
+                2.0 * reward_vel #2
+                + 10.0 * reward_step #10
+                + 6.0 * reward_swing_forward
+                + 4.0 * reward_gait
+                + 1.0 * reward_ang_vel
+                + 1.5 * reward_height
+                + 2.0 * reward_posture
+                + 2.0 * reward_upright
+                + 0.1 * reward_yaw
+                + 0.001 * reward_energy
+                + 1.0 * reward_alive
+        )
+
+        return - reward
+
+
+    def terminal_cost(self, x: mjx.Data) -> float:
+        # ==========================================================
+        # Base state
+        # ==========================================================
+
+        height = x.qpos[2]
+
+        qw, qx, qy, qz = x.qpos[3:7]
+
+        pitch = jnp.arcsin(
+            2.0 * (qw * qy - qz * qx)
+        )
+
+        roll = jnp.arctan2(
+            2.0 * (qw * qx + qy * qz),
+            1.0 - 2.0 * (qx * qx + qy * qy),
+        )
+
+        yaw = jnp.arctan2(
+            2.0 * (qw * qz + qx * qy),
+            1.0 - 2.0 * (qy * qy + qz * qz),
+        )
+
+        # ==========================================================
+        # Base velocities
+        # ==========================================================
+
+        vx = x.qvel[0]
+        vy = x.qvel[1]
+
+        roll_rate = x.qvel[3]
+        pitch_rate = x.qvel[4]
+        yaw_rate = x.qvel[5]
+
+        # ==========================================================
+        # Terminal cost
+        # ==========================================================
+
+        terminal = 0.0
+
+        # Desired height
+        terminal += 5.0 * (height - self.rest_height) ** 2 #5
+
+        # Desired forward velocity
+        terminal += 2.0 * (vx - self.target_vx) ** 2
+        terminal += 2.0 * (vy - self.target_vy) ** 2
+
+        # Upright torso
+        terminal += 10.0 * pitch ** 2 #10
+        terminal += 10.0 * roll ** 2 #10
+
+        # Face forward
+        terminal += 2.0 * yaw ** 2 #2
+
+        # Avoid spinning
+        terminal += (
+                roll_rate ** 2
+                + pitch_rate ** 2
+                + yaw_rate ** 2
+        )
+
+        return terminal
+
+"""import jax
+import jax.numpy as jnp
+import mujoco
+from mujoco import mjx
+from hydrax.task_base import Task
+
+
+class HumanoidLocomotionTask(Task):
+
+    def __init__(
             self,
             mj_model: mujoco.MjModel,
             rest_height: float = 0.85,
@@ -107,7 +512,7 @@ class HumanoidLocomotionTask(Task):
 
 ##########OLD VERSION#########
 
-"""import jax
+import jax
 import jax.numpy as jnp
 import mujoco
 from mujoco import mjx
