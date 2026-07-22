@@ -76,7 +76,6 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
     def run_single_episode(episode_seed_key):
         perturb_key, _ = jax.random.split(episode_seed_key)
         perturb = jax.random.uniform(perturb_key, shape=(), minval=-0.1, maxval=0.1)
-        ctrl_seed = int(rng.integers(0, 2**31 - 1))  # different noise realization per episode
 
         # Upload unique CPU → GPU
         mjx_data = mjx.put_data(mj_model, mj_data_init)
@@ -84,7 +83,7 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
         mjx_data = mjx_data.replace(qpos=new_qpos)
 
         initial_knots = jnp.zeros((NUM_KNOTS, mj_model.nu), dtype=jnp.float32)
-        ctrl_state = controller.init_params(initial_knots=initial_knots, seed=ctrl_seed)
+        ctrl_state = controller.init_params(initial_knots=initial_knots, seed=0)
 
         def step_fn(carry, _):
             mjx_data, ctrl_state = carry

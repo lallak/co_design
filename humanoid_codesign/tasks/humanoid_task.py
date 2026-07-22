@@ -14,7 +14,7 @@ class HumanoidLocomotionTask(Task):
         healthy_z_min: float = 0.65,
 
         # -------- Commanded walking --------
-        target_vx: float = 1.0,
+        target_vx: float = 0.3,
         target_vy: float = 0.0,
         target_yaw_rate: float = 0.0,
 
@@ -185,19 +185,7 @@ class HumanoidLocomotionTask(Task):
         # ==========================================================
 
         reward_yaw = -(yaw ** 2)
-        # ==========================================================
-        # Heading reward
-        # Encourage facing the walking direction
-        # ==========================================================
 
-        forward_vec = jnp.array([
-            jnp.cos(yaw),
-            jnp.sin(yaw),
-        ])
-
-        desired_forward = jnp.array([1.0, 0.0])
-
-        reward_heading = jnp.dot(forward_vec, desired_forward)
         # ==========================================================
         # Height reward:keep torso at desired height
         # ==========================================================
@@ -237,6 +225,33 @@ class HumanoidLocomotionTask(Task):
         )
 
         # ==========================================================
+        # Weight-shift reward
+        # Encourage the pelvis to move over the stance foot
+        # ==========================================================
+
+        pelvis_y = x.qpos[1]
+
+        left_y = x.xpos[self.left_foot_body][1]
+        right_y = x.xpos[self.right_foot_body][1]
+
+        left_support_reward = (
+                left_contact
+                * (1.0 - right_contact)
+                * (-(pelvis_y - left_y) ** 2)
+        )
+
+        right_support_reward = (
+                right_contact
+                * (1.0 - left_contact)
+                * (-(pelvis_y - right_y) ** 2)
+        )
+
+        reward_weight_shift = (
+                left_support_reward
+                + right_support_reward
+        )
+
+        # ==========================================================
         # Foot positions and velocities
         # ==========================================================
 
@@ -252,6 +267,29 @@ class HumanoidLocomotionTask(Task):
         contact_reward = (
                 left_contact * (1.0 - right_contact)
                 + right_contact * (1.0 - left_contact)
+        )
+
+        # ==========================================================
+        # Swing leg configuration
+        # Encourage a bent knee and forward hip during swing
+        # ==========================================================
+
+        left_hip_pitch = x.qpos[9]
+        left_knee = x.qpos[10]
+
+        right_hip_pitch = x.qpos[15]
+        right_knee = x.qpos[16]
+
+        reward_swing_pose = (
+                left_air * (
+                - (left_hip_pitch + 0.45) ** 2
+                - (left_knee - 0.80) ** 2
+        )
+                +
+                right_air * (
+                        - (right_hip_pitch + 0.45) ** 2
+                        - (right_knee - 0.80) ** 2
+                )
         )
 
         # ==========================================================
@@ -327,9 +365,11 @@ class HumanoidLocomotionTask(Task):
                 2.0 * reward_vel #2
                 + 10.0 * reward_step #10
                 + 6.0 * reward_swing_forward
-                + 4.0 * reward_gait
+                #+ 4.0 * reward_gait
+                + 3.0 * reward_weight_shift
                 + 1.0 * reward_ang_vel
                 + 1.5 * reward_height
+                + 3.0 * reward_swing_pose
                 + 2.0 * reward_posture
                 + 2.0 * reward_upright
                 + 0.1 * reward_yaw

@@ -75,7 +75,7 @@ def render_best_design(theta: np.ndarray):
     mj_data = mujoco.MjData(mj_model)
 
     # No keyframe defined for this robot — set the freejoint manually instead
-    rest_height = get_rest_height(theta)
+    """rest_height = get_rest_height(theta)
     mj_data.qpos[2] = rest_height  # z height
     mj_data.qpos[3] = 1.0          # quaternion w, upright
     mj_data.qvel[:] = 0.0
@@ -90,6 +90,35 @@ def render_best_design(theta: np.ndarray):
     mj_data.qpos[15] = -0.20  # R hip pitch
     mj_data.qpos[16] = 0.40  # R knee
     mj_data.qpos[17] = -0.20  # R ankle pitch
+    mujoco.mj_forward(mj_model, mj_data)"""
+
+    rest_height = get_rest_height(theta)
+
+    mj_data.qpos[0] = 0.00  # x
+    mj_data.qpos[1] = -0.015  # shift pelvis about 1.5 cm toward LEFT
+    mj_data.qpos[2] = rest_height
+
+    mj_data.qpos[3] = 1.0
+    mj_data.qpos[4] = 0.0
+    mj_data.qpos[5] = 0.0
+    mj_data.qpos[6] = 0.0
+
+    mj_data.qvel[:] = 0.0
+    mj_data.qpos[7] = 0.13  # hip roll
+    mj_data.qpos[8] = 0.0  # hip yaw
+    mj_data.qpos[9] = -0.40  # hip pitch
+    mj_data.qpos[10] = 0.60  # knee
+    mj_data.qpos[11] = -0.10  # ankle pitch
+    mj_data.qpos[12] = 0.0  # ankle roll
+
+    #Right leg
+    mj_data.qpos[13] = -0.13
+    mj_data.qpos[14] = 0.0
+    mj_data.qpos[15] = -0.18
+    mj_data.qpos[16] = 0.45
+    mj_data.qpos[17] = -0.27
+    mj_data.qpos[18] = 0.0
+
     mujoco.mj_forward(mj_model, mj_data)
 
     print(f"Rest height: {rest_height:.3f}m")
