@@ -17,7 +17,7 @@ def run_codesign(output_path: str = "results/results_humanoid/humanoid_optimizat
 
     options = {
         'bounds': [lower_bounds, upper_bounds],
-        'maxiter': 15,
+        'maxiter': 80,
         'popsize': 12,
         'verbose': 1,
         'seed': 42,

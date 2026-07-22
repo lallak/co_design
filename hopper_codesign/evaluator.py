@@ -16,11 +16,11 @@ from hopper_codesign.tasks.hopper_task import HopperLocomotionTask
 from hopper_codesign.assets.model_builder import build_hopper_model
 
 # Hyperparameters
-PLAN_HORIZON = 0.8 #duration that MPC plans into the future
+PLAN_HORIZON = 1.0 #duration that MPC plans into the future
 NUM_KNOTS = 10 #number of control points used to represent control trajectory
 # More knots allow more complex motions but increase the optimization dimension.
 NUM_SAMPLES = 1024 #number of trajectories sampled at each MPC update
-NOISE_LEVEL = 0.3 #std deviation of gaussian noise added to sampled trajectories
+NOISE_LEVEL = 0.5 #std deviation of gaussian noise added to sampled trajectories
 # Larger values encourage exploration, smaller values focus on refinement.
 TEMPERATURE = 0.5 #controls how much best trajectories influence final control (in weighted average calculation)
 # Lower values make the optimizer greedier; higher values average over more samples.
@@ -83,7 +83,8 @@ def evaluate_design(theta: np.ndarray, seed: int = 0) -> float:
         mjx_data = mjx_data.replace(qpos=new_qpos)
 
         initial_knots = jnp.zeros((NUM_KNOTS, mj_model.nu), dtype=jnp.float32)
-        ctrl_state = controller.init_params(initial_knots=initial_knots, seed=0)
+        ctrl_seed=jax.random.uniform(perturb_key,shape=(), minval=-0.1, maxval=0.1)
+        ctrl_state = controller.init_params(initial_knots=initial_knots, seed=ctrl_seed)
 
         def step_fn(carry, _):
             mjx_data, ctrl_state = carry
