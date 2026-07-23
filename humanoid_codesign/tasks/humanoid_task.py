@@ -10,6 +10,405 @@ class HumanoidLocomotionTask(Task):
     def __init__(
         self,
         mj_model: mujoco.MjModel,
+        rest_height: float = 0.85,  # 0.85
+        healthy_z_min: float = 0.65,
+
+        # -------- Commanded walking --------
+        target_vx: float = 0.3,
+        target_vy: float = 0.0,
+        target_yaw_rate: float = 0.0,
+
+        # -------- Reward weights --------
+        gait_weight: float = 1.0,
+        velocity_weight: float = 6.0,
+        angular_velocity_weight: float = 0.3,
+        upright_weight: float = 3.0,
+        yaw_weight: float = 0.2,
+        height_weight: float = 3.0,
+        energy_weight: float = 0.02,
+        air_time_weight: float = 0.0,
+        weight_shift_weight: float = 1.5,
+        swing_pose_weight: float = 0.5,
+        step_weight: float = 2.0,
+        swing_forward_weight: float = 1.5,
+        posture_weight: float = 0.2,
+        alive_weight: float = 2.0,
+        ref_tracking_weight: float = 8.0,
+
+        # -------- Gait parameters --------
+        gait: str = "walk",
+    ):
+        super().__init__(mj_model)
+
+        self.rest_height = rest_height
+        self.healthy_z_min = healthy_z_min
+
+        self.target_vx = target_vx
+        self.target_vy = target_vy
+        self.target_yaw_rate = target_yaw_rate
+
+        self.gait_weight = gait_weight
+        self.velocity_weight = velocity_weight
+        self.angular_velocity_weight = angular_velocity_weight
+        self.upright_weight = upright_weight
+        self.yaw_weight = yaw_weight
+        self.height_weight = height_weight
+        self.energy_weight = energy_weight
+        self.air_time_weight = air_time_weight
+        self.weight_shift_weight = weight_shift_weight
+        self.swing_pose_weight = swing_pose_weight
+        self.step_weight = step_weight
+        self.swing_forward_weight = swing_forward_weight
+        self.posture_weight = posture_weight
+        self.alive_weight = alive_weight
+        self.ref_tracking_weight = ref_tracking_weight
+
+        self.gait = gait
+
+        # -------------------------------------------------
+        # Feet
+        # -------------------------------------------------
+
+        self.left_foot_body = mujoco.mj_name2id(
+            mj_model, mujoco.mjtObj.mjOBJ_BODY, "leg_left_ankle_roll",
+        )
+        self.right_foot_body = mujoco.mj_name2id(
+            mj_model, mujoco.mjtObj.mjOBJ_BODY, "leg_right_ankle_roll",
+        )
+        self.feet = jnp.array(
+            [self.left_foot_body, self.right_foot_body], dtype=jnp.int32,
+        )
+
+        # -------------------------------------------------
+        # Gait parameters (Unitree-style phase clock)
+        # phase offset (left, right) as a fraction of the full gait cycle
+        # -------------------------------------------------
+
+        self.gait_phase = {
+            "stand": jnp.array([0.0, 0.0]),
+            "slow_walk": jnp.array([0.0, 0.5]),
+            "walk": jnp.array([0.0, 0.5]),
+            "jog": jnp.array([0.0, 0.5]),
+        }
+
+        # duty ratio, cadence (full gait cycles per second), swing height (m)
+        self.gait_params = {
+            "stand": jnp.array([1.0, 1.0, 0.0]),
+            "slow_walk": jnp.array([0.6, 0.8, 0.15]),
+            "walk": jnp.array([0.5, 1.0, 0.15]),
+            "jog": jnp.array([0.3, 2.0, 0.20]),
+        }
+
+        # -------------------------------------------------
+        # Standing pose
+        # -------------------------------------------------
+
+        self.qstand = jnp.array([
+            0.0, 0.0, -0.08, 0.15, -0.08, 0.0,
+            0.0, 0.0, -0.08, 0.15, -0.08, 0.0,
+        ])
+
+    def _gait_signals(self, t):
+        """
+        Time-based gait clock. Returns, for each foot:
+          - stance (1.0 in stance / 0.0 in swing), as a smooth-ish 0/1 float
+          - target swing height trajectory (0 in stance, half-sine bump in swing)
+        This replaces the old absolute-z contact threshold, which is fragile
+        because it depends on exactly where the ankle body origin sits above
+        the ground (foot sole thickness, geometry offsets, etc.) and can end
+        up permanently "no contact" if that offset is off, which breaks every
+        reward term that depends on it.
+        """
+        duty, cadence, swing_height = (
+            self.gait_params[self.gait][0],
+            self.gait_params[self.gait][1],
+            self.gait_params[self.gait][2],
+        )
+        offset_left, offset_right = (
+            self.gait_phase[self.gait][0],
+            self.gait_phase[self.gait][1],
+        )
+
+        phase_left = jnp.mod(t * cadence + offset_left, 1.0)
+        phase_right = jnp.mod(t * cadence + offset_right, 1.0)
+
+        stance_left = (phase_left < duty).astype(jnp.float32)
+        stance_right = (phase_right < duty).astype(jnp.float32)
+
+        # normalized progress through the swing portion of the cycle, in [0, 1]
+        swing_frac_left = jnp.clip(
+            (phase_left - duty) / jnp.maximum(1.0 - duty, 1e-6), 0.0, 1.0
+        )
+        swing_frac_right = jnp.clip(
+            (phase_right - duty) / jnp.maximum(1.0 - duty, 1e-6), 0.0, 1.0
+        )
+
+        target_z_left = (1.0 - stance_left) * swing_height * jnp.sin(jnp.pi * swing_frac_left)
+        target_z_right = (1.0 - stance_right) * swing_height * jnp.sin(jnp.pi * swing_frac_right)
+
+        return stance_left, stance_right, target_z_left, target_z_right, swing_frac_left, swing_frac_right
+
+    def _reference_leg_trajectory(self, t):
+        """
+        Explicit joint-space reference trajectory for the 12 leg DOF, driven
+        by the same phase clock as the gait signals. This gives the sampler
+        something to TRACK rather than something to discover from scratch --
+        sampling-based MPC (PS/MPPI/CEM) is known to get stuck in a static
+        local minimum (e.g. a stable squat) when it has to invent a full
+        coordinated stepping motion via random perturbation. Tracking a
+        hand-authored nominal gait is a far easier landscape to optimize.
+
+        Layout per leg (matches qpos[7:13] / qpos[13:19]):
+          [hip_roll, hip_yaw, hip_pitch, knee, ankle_pitch, ankle_roll]
+
+        This is a first-pass, deliberately simple reference -- tune the
+        amplitudes below to your robot's actual leg geometry/limits.
+        """
+        stance_left, stance_right, target_z_left, target_z_right, swing_frac_left, swing_frac_right = self._gait_signals(t)
+
+        hip_pitch_amp = 0.35   # rad, how far the hip swings fore/aft
+        knee_swing_amp = 0.55  # rad, extra knee bend during swing
+
+        base_hip = self.qstand[2]
+        base_knee = self.qstand[3]
+        base_ankle = self.qstand[4]
+
+        # Hip pitch ramps from trailing (+amp) to leading (-amp) over the
+        # course of the swing phase; during stance it ramps the other way
+        # (mirrors the opposite leg's swing) so the body rolls forward over it.
+        hip_pitch_left = base_hip + hip_pitch_amp * jnp.where(
+            stance_left > 0.5,
+            jnp.cos(jnp.pi * swing_frac_right),   # stance: mirror the other leg
+            -jnp.cos(jnp.pi * swing_frac_left),
+        )
+        hip_pitch_right = base_hip + hip_pitch_amp * jnp.where(
+            stance_right > 0.5,
+            jnp.cos(jnp.pi * swing_frac_left),
+            -jnp.cos(jnp.pi * swing_frac_right),
+        )
+
+        # Knee bends extra during swing (foot clearance), stays near
+        # standing bend during stance.
+        knee_left = base_knee + knee_swing_amp * (1.0 - stance_left) * jnp.sin(jnp.pi * swing_frac_left)
+        knee_right = base_knee + knee_swing_amp * (1.0 - stance_right) * jnp.sin(jnp.pi * swing_frac_right)
+
+        # Ankle roughly compensates hip+knee to keep the foot flat-ish;
+        # kept simple/constant here as a starting point.
+        ankle_pitch_left = base_ankle
+        ankle_pitch_right = base_ankle
+
+        q_ref = jnp.array([
+            0.0, 0.0, hip_pitch_left, knee_left, ankle_pitch_left, 0.0,
+            0.0, 0.0, hip_pitch_right, knee_right, ankle_pitch_right, 0.0,
+        ])
+        return q_ref
+
+    def running_cost(self, x: mjx.Data, u: jax.Array) -> float:
+        # ==========================================================
+        # Base state
+        # ==========================================================
+
+        height = x.qpos[2]
+        qw, qx, qy, qz = x.qpos[3:7]
+
+        sin_pitch = jnp.clip(2.0 * (qw * qy - qz * qx), -1.0, 1.0)
+        pitch = jnp.arcsin(sin_pitch)
+        roll = jnp.arctan2(
+            2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx * qx + qy * qy),
+        )
+        yaw = jnp.arctan2(
+            2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz),
+        )
+
+        # ==========================================================
+        # Velocity tracking (now uses the *configured* targets, not
+        # hardcoded ones — previously this ignored self.target_vx/vy/yaw
+        # and always chased 1.0 m/s regardless of what was passed in,
+        # which also disagreed with terminal_cost's target)
+        # ==========================================================
+
+        vx = x.qvel[0]
+        vy = x.qvel[1]
+
+        reward_vel = -((vx - self.target_vx) ** 2 + (vy - self.target_vy) ** 2)
+
+        roll_rate = x.qvel[3]
+        pitch_rate = x.qvel[4]
+        yaw_rate = x.qvel[5]
+
+        reward_yaw_rate = -(yaw_rate - self.target_yaw_rate) ** 2
+        reward_ang_vel = -(roll_rate ** 2 + pitch_rate ** 2 + yaw_rate ** 2)
+
+        # ==========================================================
+        # Upright / yaw / height
+        # ==========================================================
+
+        reward_upright = -(pitch ** 2 + roll ** 2)
+        reward_yaw = -(yaw ** 2)
+        reward_height = -(height - self.rest_height) ** 2
+
+        # ==========================================================
+        # Standing posture reward
+        # ==========================================================
+
+        qpos_joints = x.qpos[7:19]
+        reward_posture = -jnp.sum((qpos_joints - self.qstand) ** 2)
+
+        # ==========================================================
+        # Phase-based gait clock (replaces the old absolute-z contact
+        # estimate, which was almost certainly always reading "no
+        # contact" for both feet — see explanation above)
+        # ==========================================================
+
+        stance_left, stance_right, target_z_left, target_z_right, _, _ = self._gait_signals(x.time)
+        swing_left = 1.0 - stance_left
+        swing_right = 1.0 - stance_right
+
+        # -- reference trajectory tracking: this is the primary driver of
+        #    the stepping motion. A static crouch is a stable local minimum
+        #    for sampling-based MPC because discovering a coordinated swing
+        #    from scratch via random perturbation is hard; tracking a known
+        #    walking reference turns that into a much easier "stay close to
+        #    this nominal" problem. --
+        q_ref = self._reference_leg_trajectory(x.time)
+        reward_ref_tracking = -jnp.sum((x.qpos[7:19] - q_ref) ** 2)
+
+        left_z = x.xpos[self.left_foot_body][2]
+        right_z = x.xpos[self.right_foot_body][2]
+
+        pelvis_y = x.qpos[1]
+        left_y = x.xpos[self.left_foot_body][1]
+        right_y = x.xpos[self.right_foot_body][1]
+
+        left_x = x.xpos[self.left_foot_body][0]
+        right_x = x.xpos[self.right_foot_body][0]
+
+        left_vx = x.cvel[self.left_foot_body][3]
+        right_vx = x.cvel[self.right_foot_body][3]
+
+        left_hip_pitch = x.qpos[9]
+        left_knee = x.qpos[10]
+        right_hip_pitch = x.qpos[15]
+        right_knee = x.qpos[16]
+
+        # -- weight shift: pelvis over whichever foot is in stance --
+        reward_weight_shift = (
+            stance_left * swing_right * (-(pelvis_y - left_y) ** 2)
+            + stance_right * swing_left * (-(pelvis_y - right_y) ** 2)
+        )
+
+        # -- swing leg configuration: bent knee / forward hip, but only
+        #    for the leg that is actually scheduled to be swinging --
+        reward_swing_pose = (
+            swing_left * (-(left_hip_pitch + 1.0) ** 2 - (left_knee - 0.80) ** 2)
+            + swing_right * (-(right_hip_pitch + 1.0) ** 2 - (right_knee - 0.80) ** 2)
+        )
+
+        # -- gait: track the commanded swing-height trajectory while
+        #    swinging, stay low while in stance --
+        reward_gait = (
+            swing_left * (-(left_z - target_z_left) ** 2)
+            + stance_left * (-(left_z) ** 2)
+            + swing_right * (-(right_z - target_z_right) ** 2)
+            + stance_right * (-(right_z) ** 2)
+        )
+
+        # -- swing-foot forward velocity while swinging --
+        reward_swing_forward = (
+            swing_left * jnp.maximum(left_vx, 0.0)
+            + swing_right * jnp.maximum(right_vx, 0.0)
+        )
+
+        # -- step placement: swing foot ahead of the stance foot --
+        left_step = swing_left * stance_right * jnp.maximum(left_x - right_x, 0.0)
+        right_step = swing_right * stance_left * jnp.maximum(right_x - left_x, 0.0)
+        reward_step = left_step + right_step
+
+        # -- time spent with exactly one foot down (discourages double
+        #    support / squatting from lingering) --
+        reward_air_time = stance_left * swing_right + stance_right * swing_left
+
+        # ==========================================================
+        # Energy + alive
+        # ==========================================================
+
+        reward_energy = -jnp.sum(u ** 2)
+
+        healthy = (
+            (height > self.healthy_z_min)
+            & (jnp.abs(pitch) < 0.6)
+            & (jnp.abs(roll) < 0.5)
+        )
+        reward_alive = jnp.where(healthy, 1.0, -5.0)
+
+        # ==========================================================
+        # Final reward — now actually driven by the constructor's
+        # weight attributes, so passing different weights in __init__
+        # actually changes behavior
+        # ==========================================================
+
+        reward = (
+            self.velocity_weight * reward_vel
+            + self.step_weight * reward_step
+            + self.swing_forward_weight * reward_swing_forward
+            + self.gait_weight * reward_gait
+            + self.weight_shift_weight * reward_weight_shift
+            + self.angular_velocity_weight * reward_ang_vel
+            + self.height_weight * reward_height
+            + self.swing_pose_weight * reward_swing_pose
+            + self.posture_weight * reward_posture
+            + self.upright_weight * reward_upright
+            + self.yaw_weight * reward_yaw
+            + self.energy_weight * reward_energy
+            + self.alive_weight * reward_alive
+            + self.air_time_weight * reward_air_time
+            + self.ref_tracking_weight * reward_ref_tracking
+        )
+
+        return -reward
+
+    def terminal_cost(self, x: mjx.Data) -> float:
+        height = x.qpos[2]
+        qw, qx, qy, qz = x.qpos[3:7]
+
+        sin_pitch = jnp.clip(2.0 * (qw * qy - qz * qx), -1.0, 1.0)
+        pitch = jnp.arcsin(sin_pitch)
+        roll = jnp.arctan2(
+            2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx * qx + qy * qy),
+        )
+        yaw = jnp.arctan2(
+            2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz),
+        )
+
+        vx = x.qvel[0]
+        vy = x.qvel[1]
+        roll_rate = x.qvel[3]
+        pitch_rate = x.qvel[4]
+        yaw_rate = x.qvel[5]
+
+        terminal = 0.0
+        terminal += 5.0 * (height - self.rest_height) ** 2
+        terminal += 2.0 * (vx - self.target_vx) ** 2
+        terminal += 2.0 * (vy - self.target_vy) ** 2
+        terminal += 10.0 * pitch ** 2
+        terminal += 10.0 * roll ** 2
+        terminal += 2.0 * yaw ** 2
+        terminal += roll_rate ** 2 + pitch_rate ** 2 + yaw_rate ** 2
+
+        return terminal
+
+"""import jax
+import jax.numpy as jnp
+import mujoco
+from mujoco import mjx
+from hydrax.task_base import Task
+
+
+class HumanoidLocomotionTask(Task):
+
+    def __init__(
+        self,
+        mj_model: mujoco.MjModel,
         rest_height: float = 0.85, #0.85
         healthy_z_min: float = 0.65,
 
@@ -198,8 +597,7 @@ class HumanoidLocomotionTask(Task):
                          ) ** 2
 
         # ==========================================================
-        # Standing posture reward
-        # Encourage the robot to return to a nominal standing pose
+        # Standing posture reward - reward robot to return to a nominal standing pose
         # ==========================================================
 
         qpos_joints = x.qpos[7:19]
@@ -207,7 +605,7 @@ class HumanoidLocomotionTask(Task):
         reward_posture = -jnp.sum((qpos_joints - self.qstand) ** 2)
 
         # ==========================================================
-        # Contact reward :encourage walking rythm w/ feet alternation = gait timing reward
+        # Weight-shift reward - reward pelvis to move over the stance foot
         # ==========================================================
 
         left_z = x.xpos[self.left_foot_body][2]
@@ -226,11 +624,6 @@ class HumanoidLocomotionTask(Task):
             0.0,
             1.0,
         )
-
-        # ==========================================================
-        # Weight-shift reward
-        # Encourage the pelvis to move over the stance foot
-        # ==========================================================
 
         pelvis_y = x.qpos[1]
 
@@ -255,7 +648,7 @@ class HumanoidLocomotionTask(Task):
         )
 
         # ==========================================================
-        # Foot positions and velocities
+        # Swing leg configuration - reward a bent knee and forward hip during swing
         # ==========================================================
 
         left_x = x.xpos[self.left_foot_body][0]
@@ -271,11 +664,6 @@ class HumanoidLocomotionTask(Task):
                 left_contact * (1.0 - right_contact)
                 + right_contact * (1.0 - left_contact)
         )
-
-        # ==========================================================
-        # Swing leg configuration
-        # Encourage a bent knee and forward hip during swing
-        # ==========================================================
 
         left_hip_pitch = x.qpos[9]
         left_knee = x.qpos[10]
@@ -296,7 +684,7 @@ class HumanoidLocomotionTask(Task):
         )
 
         # ==========================================================
-        # Swing-foot reward
+        # Gait reward - reward the swing foot being lifted while the stance foot is on the ground
         # ==========================================================
 
         single_support = contact_reward
@@ -312,7 +700,7 @@ class HumanoidLocomotionTask(Task):
         )
 
         # ==========================================================
-        # Swing-foot forward reward
+        # Swing-foot forward reward - reward the swing foot moving forward while in the air
         # ==========================================================
 
         reward_swing_forward = (
@@ -321,7 +709,7 @@ class HumanoidLocomotionTask(Task):
         )
 
         # ==========================================================
-        # Step placement reward
+        # Step placement reward - reward the swing foot being placed ahead of the stance foot
         # ==========================================================
 
         left_step = (
@@ -339,7 +727,7 @@ class HumanoidLocomotionTask(Task):
         reward_step = left_step + right_step
 
         # ==========================================================
-        # Energy
+        # Energy - penalize large control inputs
         # ==========================================================
 
         reward_energy = -jnp.sum(u ** 2)
@@ -366,17 +754,17 @@ class HumanoidLocomotionTask(Task):
 
         reward = (
                 2.0 * reward_vel #2
-                #+ 10.0 * reward_step #10
+                + 10.0 * reward_step #10
                 + 6.0 * reward_swing_forward
                 + 4.0 * reward_gait
                 + 10.0 * reward_weight_shift
                 + 1.0 * reward_ang_vel
                 + 1.5 * reward_height
-                #+ 3.0 * reward_swing_pose
-                #+ 2.0 * reward_posture
-                + 2.0 * reward_upright
+                + 3.0 * reward_swing_pose
+                + 2.0 * reward_posture
+                + 0.0 * reward_upright
                 + 0.1 * reward_yaw
-                #+ 0.001 * reward_energy
+                + 2.0 * reward_energy
                 + 1.0 * reward_alive
         )
 
@@ -447,7 +835,7 @@ class HumanoidLocomotionTask(Task):
                 + yaw_rate ** 2
         )
 
-        return terminal
+        return terminal"""
 
 
 """import jax
