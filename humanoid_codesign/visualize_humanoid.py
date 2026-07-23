@@ -106,8 +106,8 @@ def render_best_design(theta: np.ndarray):
     mj_data.qvel[:] = 0.0
     mj_data.qpos[7] = 0.13  # hip roll
     mj_data.qpos[8] = 0.0  # hip yaw
-    mj_data.qpos[9] = -0.40  # hip pitch
-    mj_data.qpos[10] = 0.60  # knee
+    mj_data.qpos[9] = -1.0  # hip pitch
+    mj_data.qpos[10] = 0.45  # knee
     mj_data.qpos[11] = -0.10  # ankle pitch
     mj_data.qpos[12] = 0.0  # ankle roll
 

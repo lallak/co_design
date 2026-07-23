@@ -129,9 +129,12 @@ class HumanoidLocomotionTask(Task):
 
         qw, qx, qy, qz = x.qpos[3:7]
 
-        pitch = jnp.arcsin(
-            2.0 * (qw * qy - qz * qx)
+        sin_pitch = jnp.clip(
+            2.0 * (qw * qy - qz * qx),
+            -1.0,
+            1.0,
         )
+        pitch = jnp.arcsin(sin_pitch)
 
         roll = jnp.arctan2(
             2.0 * (qw * qx + qy * qz),
@@ -282,12 +285,12 @@ class HumanoidLocomotionTask(Task):
 
         reward_swing_pose = (
                 left_air * (
-                - (left_hip_pitch + 0.45) ** 2
+                - (left_hip_pitch + 1.0) ** 2
                 - (left_knee - 0.80) ** 2
         )
                 +
                 right_air * (
-                        - (right_hip_pitch + 0.45) ** 2
+                        - (right_hip_pitch + 1.0) ** 2
                         - (right_knee - 0.80) ** 2
                 )
         )
@@ -363,17 +366,17 @@ class HumanoidLocomotionTask(Task):
 
         reward = (
                 2.0 * reward_vel #2
-                + 10.0 * reward_step #10
+                #+ 10.0 * reward_step #10
                 + 6.0 * reward_swing_forward
-                #+ 4.0 * reward_gait
-                + 3.0 * reward_weight_shift
+                + 4.0 * reward_gait
+                + 10.0 * reward_weight_shift
                 + 1.0 * reward_ang_vel
                 + 1.5 * reward_height
-                + 3.0 * reward_swing_pose
-                + 2.0 * reward_posture
+                #+ 3.0 * reward_swing_pose
+                #+ 2.0 * reward_posture
                 + 2.0 * reward_upright
                 + 0.1 * reward_yaw
-                + 0.001 * reward_energy
+                #+ 0.001 * reward_energy
                 + 1.0 * reward_alive
         )
 
@@ -389,9 +392,12 @@ class HumanoidLocomotionTask(Task):
 
         qw, qx, qy, qz = x.qpos[3:7]
 
-        pitch = jnp.arcsin(
-            2.0 * (qw * qy - qz * qx)
+        sin_pitch = jnp.clip(
+            2.0 * (qw * qy - qz * qx),
+            -1.0,
+            1.0,
         )
+        pitch = jnp.arcsin(sin_pitch)
 
         roll = jnp.arctan2(
             2.0 * (qw * qx + qy * qz),
@@ -442,6 +448,7 @@ class HumanoidLocomotionTask(Task):
         )
 
         return terminal
+
 
 """import jax
 import jax.numpy as jnp
@@ -532,11 +539,30 @@ class HumanoidLocomotionTask(Task):
         right_hip_yaw = x.qpos[14]  # leg_right_hip_yaw_joint
         hip_yaw_cost = 0.5 * (left_hip_yaw ** 2 + right_hip_yaw ** 2)
 
+        #reward stance extension — encourages the stance leg to be straightened during support phase
+        left_knee = x.qpos[10]
+        right_knee = x.qpos[16]
+        reward_stance_extension = (
+                left_contact * (-(left_knee - 0.15) ** 2) +
+                right_contact * (-(right_knee - 0.15) ** 2)
+        )
+
+        #reward hip extension
+        left_hip_pitch = x.qpos[9]
+        right_hip_pitch = x.qpos[15]
+
+        reward_stance_hip = (
+                left_contact * (-(left_hip_pitch + 0.05) ** 2) +
+                right_contact * (-(right_hip_pitch + 0.05) ** 2)
+        )
+
         total = (healthy + height_penalty + forward
                  #+ balance_reward #it wants to stay balanced too much and ends up squatting instead of moving
                  + 2.0 * alternation
                  + 1.0 * swing_forward
                  + 3.0 * step_reward
+                 + 2.0 * reward_stance_extension
+                 + 2.0 * reward_stance_hip
                  - ctrl_cost
                  #- lateral_cost
                  #- lateral_swing_cost
@@ -547,7 +573,7 @@ class HumanoidLocomotionTask(Task):
 
     def terminal_cost(self, x: mjx.Data) -> float:
         is_healthy = x.qpos[2] >= self.healthy_z_min
-        return jnp.where(is_healthy, 0.0, -5.0)
+        return jnp.where(is_healthy, 0.0, 5.0)
 
 
 ##########OLD VERSION#########
